@@ -12,7 +12,8 @@
 #' the standard template
 #'
 #' @param wide logical (TRUE/FALSE) of whether the output data frame should be
-#' in wide format (default), else will produce long format data
+#' in wide format (default), else will produce long format data (currently only
+#' supports wide format)
 #'
 #' @importFrom openxlsx loadWorkbook read.xlsx
 #' @importFrom tidyr fill
@@ -98,9 +99,10 @@ merge_mne <- function(inputdirectory,
       system.file("extdata", "Observations_empty_check.csv",
                   package = "covidmonitor"))
 
-    # bind datasets together (this will probably throw an error if diff nrow)
+    # bind datasets together (NOTE: this will probably throw an error if diff nrow)
     observations <- cbind(observations, checkobservations)
 
+    ## NOTE: THIS IS CURRENTLY NOT WORKING PROPERLY
     # create new var to check if comments identical, else NA
     observations$trueobservation <- ifelse(
       observations$`table_sheet1$X8` == observations$table_sheet1.X8,

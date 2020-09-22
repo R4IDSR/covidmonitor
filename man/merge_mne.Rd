@@ -25,7 +25,8 @@ merge_mne(
 the standard template}
 
 \item{wide}{logical (TRUE/FALSE) of whether the output data frame should be
-in wide format (default), else will produce long format data}
+in wide format (default), else will produce long format data (currently only
+supports wide format)}
 }
 \description{
 Merge weekly report monitoring and evaluation data.
