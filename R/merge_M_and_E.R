@@ -22,7 +22,7 @@
 
 
 
-merge_M_and_E <- function(inputdirectory,
+merge_mne <- function(inputdirectory,
                      outputdirectory = tempdir(),
                      outputname = "filename",
                      template = TRUE,
