@@ -1,0 +1,23 @@
+Package: covidmonitor
+Title: Merge and Analyse WHO AFRO Covid-19 Monitoring and Evaluation Data
+Version: 0.0.0.9000
+Authors@R: 
+    c(person(given = "Alice",
+           family = "Carr",
+           role = c("aut", "cre"),
+           email = "aljc201@exeter.ac.uk",
+           comment = c(ORCID = "YOUR-ORCID-ID")), 
+      person(given = "Alex",
+             family = "Spina",
+             role = "aut"))
+Description: Package for validating and merging WHO AFRO monitoring and evaluation data as well as templates for report generation.
+License: GPL-3
+BugReports: https://github.com/R4IDSR/covidmonitor/issues
+URL: https://github.com/R4IDSR/covidmonitor
+Imports: 
+  dplyr,
+  openxlsx
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.0
