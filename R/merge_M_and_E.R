@@ -12,13 +12,14 @@
 #' the standard template
 #'
 #' @param wide logical (TRUE/FALSE) of whether the output data frame should be
-#' in wide format (default), else will produce long format data (currently only
-#' supports wide format)
+#' in wide format (default), else will produce long format data
 #'
-#' @importFrom openxlsx loadWorkbook read.xlsx
-#' @importFrom tidyr fill
+#' @importFrom rio import export
+#' @importFrom tidyr fill pivot_wider
+#' @importFrom matchmaker match_vec
+#' @importFrom dplyr bind_rows
 #'
-#' @author Alice Carr
+#' @author Alice Carr, Alex Spina
 #' @export
 
 
@@ -29,103 +30,289 @@ merge_mne <- function(inputdirectory,
                      template = TRUE,
                      wide = TRUE) {
 
-  # for debug
-  # files <- "Weekly Indicator Tool_FR GUINEE  S37.xlsx"
-
   # Read in file list. Creat output directory.
   files <- base::list.files(path = inputdirectory, full.names = TRUE)
 
   # create folder for output
   base::dir.create(outputdirectory, showWarnings = FALSE)
 
-  # upload will be the output file
-  upload <- base::as.data.frame(base::matrix(nrow = 0, ncol = base::length(files)))
 
-  # call all columns record
-  base::colnames(upload) <- base::rep("Record", base::length(files))
+  # read in dictionary for renaming variables
+  var_dict <- rio::import(
+    system.file("extdata", "mne_dictionary.xlsx",
+                package = "covidmonitor"),
+    which = 1
+  )
 
-  # handling dates
-  dateparseorder <- c("mdy HM","mdy HMS","mdY HM","mdY HMS","dmy HM","dmy HMS",
-                      "dmY HM","dmY HMS","Ymd HM","Ymd HMS","ymd HM","ymd HMS",
-                      "Ydm HM","Ydm HMS","ydm HM","ydm HMS")
+  # read in dictionary for checking comments empty or not
+  comment_dict <- rio::import(
+    system.file("extdata", "mne_dictionary.xlsx",
+                package = "covidmonitor"),
+    which = 2
+  )
 
-  # col_types = c("skip","skip","skip","skip","text","text","text","text","text","text","skip")
+
+  # create an empty list to fill in with datasets
+  output <- list()
 
   # for each file listed
   for (f in 1:base::length(files)) {
 
-    # load excel file
-    wb <- openxlsx::loadWorkbook(files[f])
-    # read in sheet of interest
-    table_sheet1 <- openxlsx::read.xlsx(wb, sheet = 2, skipEmptyRows = TRUE,
-                                        colNames = FALSE, rows = 1:122,
-                                        skipEmptyCols = TRUE, detectDates = TRUE)
+    # read in excel sheet of interest
+    og_sheet <- rio::import(files[f], which = 2,
+                                col_names = paste0("X", 1:8))
 
-    # NB. if template is same, this could go after sheet is loaded in if we dont already know what template countries have used
 
     ## for those fitting the standard template
-    if (template){
+    if (template) {
 
-    ## reshaping the dataframe
+      ## pulling separate bits apart
 
-    # fill-in missing rows from above
-    table_sheet1 <- tidyr::fill(table_sheet1, X1)
-    # drop rows with "Reponse"
-    table_sheet1 <- table_sheet1[!grepl("Réponse", table_sheet1$X6), ]
-    # add two empty rows at bottom
-    table_sheet1[nrow(table_sheet1) + 2, ] <- NA
-    # shuffle last line around so vars and responses next to eachother
-    table_sheet1$X1[nrow(table_sheet1) - 1] <- table_sheet1$X3[nrow(table_sheet1) - 2]
-    table_sheet1$X2[nrow(table_sheet1) - 1] <- table_sheet1$X4[nrow(table_sheet1) - 2]
-    table_sheet1$X1[nrow(table_sheet1)]     <- table_sheet1$X5[nrow(table_sheet1) - 2]
-    table_sheet1$X2[nrow(table_sheet1)]     <- table_sheet1$X6[nrow(table_sheet1) - 2]
+      # identifiers: country, date of report, week
+      # find anchors for bit of interest
+      iden_start  <- grep("Pays", og_sheet$X1)
+      iden_stop   <- grep("Semaine épidémiologique", og_sheet$X1)
+      # subset rows of interest based on anchors
+      identifiers <- og_sheet[iden_start:iden_stop, ]
 
-    # over-write empties with values in column 6
-    table_sheet1$X2 <- ifelse(is.na(table_sheet1$X2),
-                              table_sheet1$X6,
-                              table_sheet1$X2)
+      # yes_nos: the line on data collection / summarisation
+      yes_no_start <- grep("Liste des cas soumise par filière de contamination",
+                           og_sheet$X1)
+      # flip to long
+      yes_nos <- data.frame(
+        # pull od columns (with var)
+        t(og_sheet[yes_no_start, c(TRUE, FALSE)]),
+        # pull even columns (with response)
+        t(og_sheet[yes_no_start, c(FALSE, TRUE)]),
+        row.names = NULL)
+      # fix names
+      names(yes_nos) <- c("X1", "X2")
+      # drop missings
+      yes_nos <- yes_nos[!is.na(yes_nos$X1), ]
 
-    # drop empties and previous response column
-    table_sheet1 <- table_sheet1[,-c(3:6)]
-    # drop variables occurring twice
-    table_sheet1 <- table_sheet1[!duplicated(table_sheet1$X1), ]
 
-    ## Dealing with the observation columns (free text comments)
+      # cut_offs: the cut off values for evaluation of indicators
+      cut_off_start <- grep("Évaluation des indicateurs d’exécution",
+                            og_sheet$X1)
+      cut_off_stop <- nrow(og_sheet)
+      cut_offs <- og_sheet[cut_off_start:cut_off_stop, ]
 
-    # only keep non empty comment rows
-    observations <- na.omit(as.data.frame(table_sheet1$X8))
 
-    # Read in empty template of observations
-    # make sure file path correct
-    checkobservations <- utils::read.csv(
-      system.file("extdata", "Observations_empty_check.csv",
-                  package = "covidmonitor"))
+      # indicators: the main data we are interested in
+      indi_start <- grep("Coordination et gestion des incidents", og_sheet$X1)
+      indi_stop  <- grep("Indicateur d’exécution n° 31", og_sheet$X1)
+      table_sheet1 <- og_sheet[indi_start:indi_stop, ]
 
-    # bind datasets together (NOTE: this will probably throw an error if diff nrow)
-    observations <- cbind(observations, checkobservations)
+      # fill-in missing rows from above (indicator names for merged cells)
+      table_sheet1 <- tidyr::fill(table_sheet1, X1)
 
-    ## NOTE: THIS IS CURRENTLY NOT WORKING PROPERLY
-    # create new var to check if comments identical, else NA
-    observations$trueobservation <- ifelse(
-      observations$`table_sheet1$X8` == observations$table_sheet1.X8,
-      NA,
-      observations$`table_sheet1$X8`)
 
-    # create a vector of all observation names
-    obslist <- data.frame(paste("Observation", seq(1, 43), sep = "_"))
-    # bind to observation column checker from above
-    observations <- cbind(observations, obslist)
-    # only keep indicator name and if comments have been added vars
-    observations <- subset(observations, select = c(3, 4))
-    # rename to fit table_sheet1
-    colnames(observations) <- c("X2","X1")
+      ## reshaping indicator data
 
-    # only keep indicators and obs
-    table_sheet1 <- subset(table_sheet1, select = c(1, 2))
-    # chuck in comments below as separate variables
-    table_sheet1 <- rbind(table_sheet1, observations)
 
-    }
+      # pull the extra giblets together if leaving in long format
+      if (!wide) {
+        # indicator grouping variables for later
+        table_sheet1$grps <- table_sheet1$X1
+        table_sheet1$grps[!grepl("Réponse", table_sheet1$X6)] <- NA
+        table_sheet1$grps[grep("Indicateur|Date|Estimation",
+                               table_sheet1$grps)] <- NA
+        # fill-in groups for use later
+        table_sheet1 <- tidyr::fill(table_sheet1, grps)
+      }
+
+      # drop rows with "Reponse"
+      table_sheet1 <- table_sheet1[!grepl("Réponse", table_sheet1$X6), ]
+
+      # drop empty columns
+      table_sheet1 <- table_sheet1[ , -c(2:5)]
+
+      ## Dealing with the observation columns (free text comments)
+
+      # set those that are same same as dictionary to NA
+      table_sheet1$X8[table_sheet1$X8 == comment_dict$french_comment] <- NA
+
+
+      ## pull together the wide version of data set
+      if (wide) {
+
+        # define which rows to keep based on dictionary
+        obs_rows <- which(!is.na(comment_dict$french_comment))
+
+        # pull together observations in an appropriately named dataframe
+        observations <- data.frame(
+          # add x1 column with var names
+          "X1" = paste0("observations_", 1:length(obs_rows)),
+          # only keep the rows defined in the dictionary
+          "X2" = table_sheet1$X8[obs_rows]
+        )
+
+        # only keep indicators and obs
+        table_sheet1 <- subset(table_sheet1, select = c(1, 2))
+        names(table_sheet1) <- c("X1", "X2")
+
+        # bind rows of different bits want
+        upload <- rbind(
+          identifiers[ , 1:2],
+          table_sheet1,
+          yes_nos,
+          observations
+
+        )
+
+        # recode variables based on dictionary
+        upload$X1 <- matchmaker::match_vec(upload$X1,
+                                           dictionary = var_dict,
+                                           from = "french_label",
+                                           to = "var_name")
+        # flip to wide format
+        upload <- tidyr::pivot_wider(upload,
+                                     names_from = X1,
+                                     values_from = X2)
+
+        # change to date
+        upload$date <- as.Date(
+          as.numeric(upload$date),
+          origin = "1899-12-30")
+
+
+        # consider making week using tsibble
+
+
+        #can make colour coded variables for the indicators as specified
+        #ie
+        #upload["Indicator_6_evaluation",f] <- ifelse(table_sheet1$X2[6]<5 ,"well",
+        # ifelse(table_sheet1$X2[6]>10,"poor",
+        #        ifelse(table_sheet1$X2[6]>=5 & table_sheet1$X2[6]<=10, "acceptable",
+        #               NA)))
+
+        # save data in list
+        output[[f]] <- upload
+
+      } else {
+        ## if keeping in long format
+
+        # add in extra cols for yes_nos
+        yes_nos <- cbind(yes_nos, NA, NA , NA)
+
+        # rename yes_nos to bind
+        names(yes_nos) <- names(table_sheet1)
+
+        # combine with indicator table
+        table_sheet1 <- rbind(table_sheet1, yes_nos)
+
+        # add in identifier vars
+        table_sheet1$country <- identifiers[1, 2]
+        table_sheet1$date <- as.Date(
+          as.numeric(identifiers[2, 2]),
+          origin = "1899-12-30")
+        table_sheet1$epi_week <- as.numeric(identifiers[3, 2])
+
+        # see which indicators are character responses
+        char_vars <- grep("[a-z]", table_sheet1$X6)
+
+        # copy indicator reponses in to new columns
+        table_sheet1$num_vars <- table_sheet1$X6
+        table_sheet1$str_vars <- table_sheet1$X6
+
+        # set appropriate ones to empty
+        table_sheet1$num_vars[char_vars] <- NA
+        table_sheet1[-char_vars, "str_vars"] <- NA
+
+        # make numeric indicators
+        table_sheet1$num_vars <- as.numeric(table_sheet1$num_vars)
+
+        # remove combined variable
+        table_sheet1 <- table_sheet1[, -2]
+
+
+        # recode variables based on dictionary
+        table_sheet1$X1 <- matchmaker::match_vec(table_sheet1$X1,
+                                           dictionary = var_dict,
+                                           from = "french_label",
+                                           to = "var_name")
+
+        # fix names
+        names(table_sheet1) <- c("indicator",
+                                 "reporting_frequency",
+                                 "observations",
+                                 "grps",
+                                 "country",
+                                 "date",
+                                 "epi_week",
+                                 "num_vars",
+                                 "str_vars")
+
+        ## define evaluation variable
+        table_sheet1$evaluation <- NA
+
+        # choose which rows to work on
+        indicator_rows <- paste0("indicator_", c(7, 9:11, 15, 17, 18, 24))
+
+        # assign values
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                        table_sheet1$num_vars >= 90] <- "Bon"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars >= 80 &
+                                  table_sheet1$num_vars <= 89] <- "Acceptable"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars < 80] <- "Mediocre"
+
+        # choose which rows to work on
+        indicator_rows <- paste0("indicator_", c(6, 19:21))
+
+        # assign values
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars < 5] <- "Bon"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars >= 5 &
+                                  table_sheet1$num_vars <= 10] <- "Acceptable"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars > 10] <- "Mediocre"
+
+        # choose which rows to work on
+        indicator_rows <- paste0("indicator_", c(12:13))
+
+        # assign values
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars > 60] <- "Bon"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars >= 40 &
+                                  table_sheet1$num_vars <= 60] <- "Acceptable"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars < 40] <- "Mediocre"
+
+        # choose which rows to work on
+        indicator_rows <- paste0("indicator_", c(14, 16))
+
+        # assign values
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars > 40] <- "Bon"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars >= 20 &
+                                  table_sheet1$num_vars <= 40] <- "Acceptable"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars < 20] <- "Mediocre"
+        # choose which rows to work on
+        indicator_rows <- paste0("indicator_", c(14, 16))
+
+        # assign values
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars >= 0] <- "Bon"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars >= -5 &
+                                  table_sheet1$num_vars <= -1] <- "Acceptable"
+        table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
+                                  table_sheet1$num_vars < -5] <- "Mediocre"
+
+
+        # save data in list
+        output[[f]] <- table_sheet1
+
+      }
+    } # end template conform section
+
+
 
     ## for non standard template files
 
@@ -133,180 +320,22 @@ merge_mne <- function(inputdirectory,
     #
     # }
 
-    #make upload dataframe
-    upload["Country",f]                                   <- table_sheet1$X2[  1]
-    upload["Date",f]                                      <- table_sheet1$X2[  2]
-    upload["Epi_week",f]                                  <- table_sheet1$X2[  3]
-    upload["Budget_COVID",f]                              <- table_sheet1$X2[  4]
-    upload["Budget_total",f]                              <- table_sheet1$X2[  5]
-    upload["Indicator_1",f]                               <- table_sheet1$X2[  6]
-    upload["Intervetnion_funding",f]                      <- table_sheet1$X2[  7]
-    upload["Intervetnion_funding_total",f]                <- table_sheet1$X2[  8]
-    upload["Indicator_2",f]                               <- table_sheet1$X2[  9]
-    upload["ESGI_workforce",f]                            <- table_sheet1$X2[ 10]
-    upload["ESGI_status",f]                               <- table_sheet1$X2[ 11]
-    upload["Indicator_3",f]                               <- table_sheet1$X2[ 12]
-    upload["ESGI_national_staff",f]                       <- table_sheet1$X2[ 13]
-    upload["Indicator_4",f]                               <- table_sheet1$X2[ 14]
-    upload["ESGI_country_staff",f]                        <- table_sheet1$X2[ 15]
-    upload["Indicator_5",f]                               <- table_sheet1$X2[ 16]
-    upload["ESGI_support",f]                              <- table_sheet1$X2[ 17]
-    upload["ESGI_virtual_training",f]                     <- table_sheet1$X2[ 18]
-    upload["Weekly_meeting_reps_authorities",f]           <- table_sheet1$X2[ 19]
-    upload["Meeting_reps_head",f]                         <- table_sheet1$X2[ 20]
-    upload["Travelers_tested_total",f]                    <- table_sheet1$X2[ 21]
-    upload["Travelers_positive",f]                        <- table_sheet1$X2[ 22]
-    upload["Indicator_6",f]                               <- table_sheet1$X2[ 23]
-    upload["Travelers_quarentined",f]                     <- table_sheet1$X2[ 24]
-    upload["Travelers_tracked",f]                         <- table_sheet1$X2[ 25]
-    upload["Travelers_positive_surveillance",f]           <- table_sheet1$X2[ 26]
-    upload["entry_points_COVID",f]                        <- table_sheet1$X2[ 27]
-    upload["entry_points_total",f]                        <- table_sheet1$X2[ 28]
-    upload["Indicator_7",f]                               <- table_sheet1$X2[ 29]
-    upload["Indicator_8",f]                               <- table_sheet1$X2[ 30]
-    upload["Borders_reopened",f]                          <- table_sheet1$X2[ 31]
-    upload["Borders_reopened_land_date",f]                <- table_sheet1$X2[ 32]
-    upload["Borders_reopened_air_date",f]                 <- table_sheet1$X2[ 33]
-    upload["Borders_reopened_maritime_date",f]            <- table_sheet1$X2[ 34]
-    upload["Cum_num_confirmed_cases",f]                   <- table_sheet1$X2[ 35]
-    upload["New_cases_confirmed_total",f]                 <- table_sheet1$X2[ 36]
-    upload["New_cases_confirmed_known_contacts",f]        <- table_sheet1$X2[ 37]
-    upload["Indicator_9",f]                               <- table_sheet1$X2[ 38]
-    upload["New_cases_reported_total",f]                  <- table_sheet1$X2[ 39]
-    upload["Reported_cases_investigated_24h",f]           <- table_sheet1$X2[ 40]
-    upload["Indicator_10",f]                              <- table_sheet1$X2[ 41]
-    upload["Cum_num_contacts",f]                          <- table_sheet1$X2[ 42]
-    upload["Contacts_followed_7days",f]                   <- table_sheet1$X2[ 43]
-    upload["Contacts_followed_total",f]                   <- table_sheet1$X2[ 44]
-    upload["Contacts_reviewed_24h",f]                     <- table_sheet1$X2[ 45]
-    upload["Indicator_11",f]                              <- table_sheet1$X2[ 46]
-    upload["Samples_COVID_48h",f]                         <- table_sheet1$X2[ 47]
-    upload["Lab_results_communicated",f]                  <- table_sheet1$X2[ 48]
-    upload["Indicator_12",f]                              <- table_sheet1$X2[ 49]
-    upload["Cum_num_tests_prev_week",f]                   <- table_sheet1$X2[ 50]
-    upload["Cum_num_tests_curr_week",f]                   <- table_sheet1$X2[ 51]
-    upload["Indicator_13",f]                              <- table_sheet1$X2[ 52]
-    upload["Screening_labs",f]                            <- table_sheet1$X2[ 53]
-    upload["New_tests_curr_week_total",f]                 <- table_sheet1$X2[ 54]
-    upload["New_tests_curr_week_decentralized",f]         <- table_sheet1$X2[ 55]
-    upload["Indicator_14",f]                              <- table_sheet1$X2[ 56]
-    upload["COVID_treatment_centres",f]                   <- table_sheet1$X2[ 57]
-    upload["Total_beds_reserved_suspected",f]             <- table_sheet1$X2[ 58]
-    upload["Total_beds_occupied_suspected",f]             <- table_sheet1$X2[ 59]
-    upload["Indicator_15",f]                              <- table_sheet1$X2[ 60]
-    upload["COVID_treatment_centres_subnational",f]       <- table_sheet1$X2[ 61]
-    upload["Indicator_16",f]                              <- table_sheet1$X2[ 62]
-    upload["Total_beds_reserved_confirmed",f]             <- table_sheet1$X2[ 63]
-    upload["Total_beds_occupied_confirmed",f]             <- table_sheet1$X2[ 64]
-    upload["Indicator_17",f]                              <- table_sheet1$X2[ 65]
-    upload["Total_beds_reserved_severe",f]                <- table_sheet1$X2[ 66]
-    upload["Total_beds_occupied_severe",f]                <- table_sheet1$X2[ 67]
-    upload["Indicator_18",f]                              <- table_sheet1$X2[ 68]
-    upload["Cum_num_deaths",f]                            <- table_sheet1$X2[ 69]
-    upload["Indicator_19",f]                              <- table_sheet1$X2[ 70]
-    upload["Cum_num_confirmed_cases_healthcare_worker",f] <- table_sheet1$X2[ 71]
-    upload["Indicator_20",f]                              <- table_sheet1$X2[ 72]
-    upload["Confirmed_cases_healthcare_7day",f]           <- table_sheet1$X2[ 73]
-    upload["Indicator_21",f]                              <- table_sheet1$X2[ 74]
-    upload["Total_districts",f]                           <- table_sheet1$X2[ 75]
-    upload["Total_districts_1case",f]                     <- table_sheet1$X2[ 76]
-    upload["Total_districts_1case_7day",f]                <- table_sheet1$X2[ 77]
-    upload["Indicator_22",f]                              <- table_sheet1$X2[ 78]
-    upload["Deaths_confirmed_cases_7day",f]               <- table_sheet1$X2[ 79]
-    upload["Indicator_23",f]                              <- table_sheet1$X2[ 80]
-    upload["Confirmed_cases_isolation_within1day_7day",f] <- table_sheet1$X2[ 81]
-    upload["Indicator_24",f]                              <- table_sheet1$X2[ 82]
-    upload["Healthcare_worker_total",f]                   <- table_sheet1$X2[ 83]
-    upload["Healthcare_worker_COVID_trained",f]           <- table_sheet1$X2[ 84]
-    upload["Indicator_25",f]                              <- table_sheet1$X2[ 85]
-    upload["Indicator_26",f]                              <- table_sheet1$X2[ 86]
-    upload["RCCE_outreach_percent",f]                     <- table_sheet1$X2[ 87]
-    upload["Public_transport_percent_means",f]            <- table_sheet1$X2[ 88]
-    upload["Masks_total_percent",f]                       <- table_sheet1$X2[ 89]
-    upload["Masks_correct_percent",f]                     <- table_sheet1$X2[ 90]
-    upload["Hand_hygiene_percent",f]                      <- table_sheet1$X2[ 91]
-    upload["Primare_care_consultations_month",f]          <- table_sheet1$X2[ 92]
-    upload["Primare_care_consultations_month_2019",f]     <- table_sheet1$X2[ 93]
-    upload["Indicator_27",f]                              <- table_sheet1$X2[ 94]
-    upload["Infant_survival_d_t_p_month",f]               <- table_sheet1$X2[ 95]
-    upload["Infant_survival_d_t_p_month_2019",f]          <- table_sheet1$X2[ 96]
-    upload["Indicator_28",f]                              <- table_sheet1$X2[ 97]
-    upload["Outpatients_month",f]                         <- table_sheet1$X2[ 98]
-    upload["Outpatients_month_2019",f]                    <- table_sheet1$X2[ 99]
-    upload["Indicator_29",f]                              <- table_sheet1$X2[100]
-    upload["HIV_treated_month",f]                         <- table_sheet1$X2[101]
-    upload["HIV_treated_month_2019",f]                    <- table_sheet1$X2[102]
-    upload["Indicator_30",f]                              <- table_sheet1$X2[103]
-    upload["Formal_procurment_national",f]                <- table_sheet1$X2[104]
-    upload["Essential_purhases_monitoring",f]             <- table_sheet1$X2[105]
-    upload["Indicator_31",f]                              <- table_sheet1$X2[106]
-    upload["Submitted_contaminaion_route",f]              <- table_sheet1$X2[107]
-    upload["Updated_submitted_tracing",f]                 <- table_sheet1$X2[108]
-    upload["Presentation_COVID",f]                        <- table_sheet1$X2[109]
-    upload["Observation_1",f]                             <- table_sheet1$X2[110]
-    upload["Observation_2",f]                             <- table_sheet1$X2[111]
-    upload["Observation_3",f]                             <- table_sheet1$X2[112]
-    upload["Observation_4",f]                             <- table_sheet1$X2[113]
-    upload["Observation_5",f]                             <- table_sheet1$X2[114]
-    upload["Observation_6",f]                             <- table_sheet1$X2[115]
-    upload["Observation_7",f]                             <- table_sheet1$X2[116]
-    upload["Observation_8",f]                             <- table_sheet1$X2[117]
-    upload["Observation_9",f]                             <- table_sheet1$X2[118]
-    upload["Observation_10",f]                            <- table_sheet1$X2[119]
-    upload["Observation_11",f]                            <- table_sheet1$X2[120]
-    upload["Observation_12",f]                            <- table_sheet1$X2[121]
-    upload["Observation_13",f]                            <- table_sheet1$X2[122]
-    upload["Observation_14",f]                            <- table_sheet1$X2[123]
-    upload["Observation_15",f]                            <- table_sheet1$X2[124]
-    upload["Observation_16",f]                            <- table_sheet1$X2[125]
-    upload["Observation_17",f]                            <- table_sheet1$X2[126]
-    upload["Observation_18",f]                            <- table_sheet1$X2[127]
-    upload["Observation_19",f]                            <- table_sheet1$X2[128]
-    upload["Observation_20",f]                            <- table_sheet1$X2[129]
-    upload["Observation_21",f]                            <- table_sheet1$X2[130]
-    upload["Observation_22",f]                            <- table_sheet1$X2[131]
-    upload["Observation_23",f]                            <- table_sheet1$X2[132]
-    upload["Observation_24",f]                            <- table_sheet1$X2[133]
-    upload["Observation_25",f]                            <- table_sheet1$X2[134]
-    upload["Observation_26",f]                            <- table_sheet1$X2[135]
-    upload["Observation_27",f]                            <- table_sheet1$X2[136]
-    upload["Observation_28",f]                            <- table_sheet1$X2[137]
-    upload["Observation_29",f]                            <- table_sheet1$X2[138]
-    upload["Observation_30",f]                            <- table_sheet1$X2[139]
-    upload["Observation_31",f]                            <- table_sheet1$X2[140]
-    upload["Observation_32",f]                            <- table_sheet1$X2[141]
-    upload["Observation_33",f]                            <- table_sheet1$X2[142]
-    upload["Observation_34",f]                            <- table_sheet1$X2[143]
-    upload["Observation_35",f]                            <- table_sheet1$X2[144]
-    upload["Observation_36",f]                            <- table_sheet1$X2[145]
-    upload["Observation_37",f]                            <- table_sheet1$X2[146]
-    upload["Observation_38",f]                            <- table_sheet1$X2[147]
-    upload["Observation_39",f]                            <- table_sheet1$X2[148]
-    upload["Observation_40",f]                            <- table_sheet1$X2[149]
-    upload["Observation_41",f]                            <- table_sheet1$X2[150]
-    upload["Observation_42",f]                            <- table_sheet1$X2[151]
-    upload["Observation_43",f]                            <- table_sheet1$X2[152]
 
-    #can make colour coded variables for the indicators as specified
-    #ie
-    #upload["Indicator_6_evaluation",f] <- ifelse(table_sheet1$X2[6]<5 ,"well",
-                                                  # ifelse(table_sheet1$X2[6]>10,"poor",
-                                                  #        ifelse(table_sheet1$X2[6]>=5 & table_sheet1$X2[6]<=10, "acceptable",
-                                                  #               NA)))
+
 
 
   }
 
-  ## output file
 
-  # put rownames in a column
-  upload <- base::cbind("Variable / Field Name" = rownames(upload),upload)
-  # flip to wide
-  upload <- base::as.data.frame(base::t(upload))
-  # drop duplicate (because of rownames)
-  upload <- upload[-1, ]
+  ## pull together a single dataset
+  output <- dplyr::bind_rows(output)
+
+  ## output file
   # define path to output to
-  filename <- base::paste(outputdirectory,"/",outputname,".csv", sep = "")
+  filename <- base::paste(outputdirectory,"/",outputname,".xlsx", sep = "")
   # write file
-  utils::write.csv(upload, file = filename, row.names = FALSE)
+  rio::export(output, file = filename)
+
+  # return dataframe
+  output
 }

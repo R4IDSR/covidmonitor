@@ -25,8 +25,7 @@ merge_mne(
 the standard template}
 
 \item{wide}{logical (TRUE/FALSE) of whether the output data frame should be
-in wide format (default), else will produce long format data (currently only
-supports wide format)}
+in wide format (default), else will produce long format data}
 }
 \description{
 Merge weekly report monitoring and evaluation data.
@@ -34,5 +33,5 @@ Currently based on Guinea template; to be further in case of non-templated
 documents
 }
 \author{
-Alice Carr
+Alice Carr, Alex Spina
 }

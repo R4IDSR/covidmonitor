@@ -15,8 +15,10 @@ License: GPL-3
 BugReports: https://github.com/R4IDSR/covidmonitor/issues
 URL: https://github.com/R4IDSR/covidmonitor
 Imports: 
-  openxlsx, 
-  tidyr
+  rio, 
+  tidyr, 
+  dplyr, 
+  matchmaker
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
