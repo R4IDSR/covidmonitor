@@ -41,7 +41,9 @@ merge_mne <- function(inputdirectory,
   # upload will be the output file
   upload <- base::as.data.frame(base::matrix(nrow = 0, ncol = base::length(files)))
 
+  # call all columns record
   base::colnames(upload) <- base::rep("Record", base::length(files))
+
   # handling dates
   dateparseorder <- c("mdy HM","mdy HMS","mdY HM","mdY HMS","dmy HM","dmy HMS",
                       "dmY HM","dmY HMS","Ymd HM","Ymd HMS","ymd HM","ymd HMS",
