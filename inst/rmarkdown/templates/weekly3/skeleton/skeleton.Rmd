@@ -182,6 +182,11 @@ covid_afro$epi_week <- floor_date(covid_afro$reporting_date,
 covid_afro$epi_week2 <- floor_date(covid_afro$date_of_death, 
                                    "week", week_start = 1)
 
+## create an epi week variable as calendar week 
+## so can show prev week easier 
+covid_afro$calendar_week <- week(covid_afro$reporting_date)
+covid_afro$calendar_week2 <- week(covid_afro$date_of_death)
+
 ```
 
 
@@ -306,16 +311,34 @@ tab_less1000_1 <-  covid_afro %>%
 nb_countries_less1000 <- nrow(tab_less1000_1)
 
 
+## get case counts for prev week 
+cumul_cases_prev <- covid_afro %>% 
+  filter(calendar_week < No_week) %>% 
+  nrow()
+
+## get death counts for prev week 
+## (may need to cross check this with missing dates)
+## there are missing dates so maybe just do it based on outcome variable and date of report
+cumul_deaths_prev <- covid_afro %>% 
+  filter(calendar_week2 < No_week & 
+           !is.na(calendar_week2)) %>% 
+  nrow()
+
+
 ```
 
 ##	_Epidemiological update_
 
-* As of `r this_week`, on the African continent there were`r nb_cases_afric` reported cases and `r nb_deaths_afric` deaths.  ( `r CFR_Afric` % of case fatality rate). 
+* As of `r this_week`, on the African continent there were`r nb_cases_afric` 
+reported cases and `r nb_deaths_afric` deaths. 
+( `r CFR_Afric` % of case fatality rate). 
 
-* In the WHO African Region there are `r cumul_cases_ok` cases and `r cumul_deaths_ok`deaths (cf. 1,091,012   cases and 23, 323  deaths last week) - about `r perc_cases_sa`% of cumulative cases in South Africa.
- 
+* In the WHO African Region there are `r cumul_cases_ok` cases and 
+`r cumul_deaths_ok`deaths (cf. `r cumul_cases_prev`   cases and `r cumul_deaths_prev`
+deaths last week) - about `r perc_cases_sa`% of cumulative cases in South Africa.
 
-* `r new_cases_last7`cases recorded over the past 7 days-top 10 account for over 83% of these cases ( cf. 33,500  and 88% last week) -Table I)
+* `r new_cases_last7`cases recorded over the past 7 days - top 10 account for 
+over 83% of these cases ( cf. 33,500  and 88% last week) -Table I)
 
 
 ```{r}
