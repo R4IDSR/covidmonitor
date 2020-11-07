@@ -24,14 +24,20 @@
 
 
 
-merge_mne <- function(inputdirectory,
+merge_kpi <- function(inputdirectory,
                      outputdirectory = tempdir(),
-                     outputname = "filename",
+                     outputname = "kpi_merged",
                      template = TRUE,
                      wide = TRUE) {
 
   # Read in file list. Creat output directory.
-  files <- base::list.files(path = inputdirectory, full.names = TRUE)
+  files <- base::list.files(path = inputdirectory,
+                            full.names = TRUE,
+                            recursive = TRUE)
+
+  # drop files we dont want
+  # those that have not been assigned a name yet and the combined.csv
+  files <- files[-grep("---.|Combined.csv", files)]
 
   # create folder for output
   base::dir.create(outputdirectory, showWarnings = FALSE)
@@ -51,6 +57,7 @@ merge_mne <- function(inputdirectory,
     which = 2
   )
 
+  # TODO add in a check to define if is template conform or not (and put that in template arg)
 
   # create an empty list to fill in with datasets
   output <- list()
@@ -59,7 +66,7 @@ merge_mne <- function(inputdirectory,
   for (f in 1:base::length(files)) {
 
     # read in excel sheet of interest
-    og_sheet <- rio::import(files[f], which = 2,
+    og_sheet <- rio::import(files[f], which = "Data fields",
                                 col_names = paste0("X", 1:8))
 
 
@@ -176,10 +183,10 @@ merge_mne <- function(inputdirectory,
           origin = "1899-12-30")
 
 
-        # consider making week using tsibble
+        # TODO consider making week using tsibble
 
 
-        #can make colour coded variables for the indicators as specified
+        # TODO can make colour coded variables for the indicators as specified
         #ie
         #upload["Indicator_6_evaluation",f] <- ifelse(table_sheet1$X2[6]<5 ,"well",
         # ifelse(table_sheet1$X2[6]>10,"poor",
@@ -314,7 +321,7 @@ merge_mne <- function(inputdirectory,
 
 
 
-    ## for non standard template files
+    ## TODO for non standard template files
 
     # else{
     #
