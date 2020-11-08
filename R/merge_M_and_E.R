@@ -17,7 +17,7 @@
 #' @importFrom rio import export
 #' @importFrom tidyr fill pivot_wider
 #' @importFrom matchmaker match_vec
-#' @importFrom dplyr bind_rows
+#' @importFrom dplyr bind_rows case_when
 #'
 #' @author Alice Carr, Alex Spina
 #' @export
@@ -65,26 +65,48 @@ merge_kpi <- function(inputdirectory,
   # for each file listed
   for (f in 1:base::length(files)) {
 
-    # read in excel sheet of interest
-    og_sheet <- rio::import(files[f], which = "Data fields",
-                                col_names = paste0("X", 1:8))
-
 
     ## for those fitting the standard template
     if (template) {
+
+      # read in excel sheet of interest
+      og_sheet <- rio::import(files[f], which = "Data fields",
+                              col_names = paste0("X", 1:8))
+
+      ## define language
+      lang <- dplyr::case_when(
+        og_sheet$X1[1] == "Pays :"   ~   "french",
+        og_sheet$X1[1] == "Country:" ~   "english"
+      )
+
+
 
       ## pulling separate bits apart
 
       # identifiers: country, date of report, week
       # find anchors for bit of interest
-      iden_start  <- grep("Pays", og_sheet$X1)
-      iden_stop   <- grep("Semaine épidémiologique", og_sheet$X1)
+      iden_start  <- grep(
+        ## find the row in appropriate language
+        matchmaker::match_vec("country", dictionary = var_dict,
+                              from = "var_name", to = paste0(lang, "_label")),
+        og_sheet$X1)
+
+      iden_stop   <- grep(
+        ## find the row in appropriate language
+        matchmaker::match_vec("epi_week", dictionary = var_dict,
+                              from = "var_name", to = paste0(lang, "_label")),
+        og_sheet$X1)
+
       # subset rows of interest based on anchors
       identifiers <- og_sheet[iden_start:iden_stop, ]
 
       # yes_nos: the line on data collection / summarisation
-      yes_no_start <- grep("Liste des cas soumise par filière de contamination",
+      yes_no_start <- grep(
+        ## find the row in appropriate language
+        matchmaker::match_vec("submitted_contaminaion_route", dictionary = var_dict,
+                              from = "var_name", to = paste0(lang, "_label")),
                            og_sheet$X1)
+
       # flip to long
       yes_nos <- data.frame(
         # pull od columns (with var)
@@ -99,15 +121,21 @@ merge_kpi <- function(inputdirectory,
 
 
       # cut_offs: the cut off values for evaluation of indicators
-      cut_off_start <- grep("Évaluation des indicateurs d’exécution",
+      cut_off_start <- grep(
+        "Évaluation des indicateurs d’exécution|Performance Indicator Assessment",
                             og_sheet$X1)
       cut_off_stop <- nrow(og_sheet)
       cut_offs <- og_sheet[cut_off_start:cut_off_stop, ]
 
 
       # indicators: the main data we are interested in
-      indi_start <- grep("Coordination et gestion des incidents", og_sheet$X1)
-      indi_stop  <- grep("Indicateur d’exécution n° 31", og_sheet$X1)
+      indi_start <- grep("Coordination et gestion des incidents|Coordination & Incident Management",
+                         og_sheet$X1)
+      indi_stop  <- grep(
+        ## find the row in appropriate language
+        matchmaker::match_vec("indicator_31", dictionary = var_dict,
+                              from = "var_name", to = paste0(lang, "_label")),
+                              og_sheet$X1)
       table_sheet1 <- og_sheet[indi_start:indi_stop, ]
 
       # fill-in missing rows from above (indicator names for merged cells)
@@ -121,15 +149,15 @@ merge_kpi <- function(inputdirectory,
       if (!wide) {
         # indicator grouping variables for later
         table_sheet1$grps <- table_sheet1$X1
-        table_sheet1$grps[!grepl("Réponse", table_sheet1$X6)] <- NA
-        table_sheet1$grps[grep("Indicateur|Date|Estimation",
+        table_sheet1$grps[!grepl("Réponse|Response", table_sheet1$X6)] <- NA
+        table_sheet1$grps[grep("Indicateur|Date|Estimation|Indicator|Estimate",
                                table_sheet1$grps)] <- NA
         # fill-in groups for use later
         table_sheet1 <- tidyr::fill(table_sheet1, grps)
       }
 
       # drop rows with "Reponse"
-      table_sheet1 <- table_sheet1[!grepl("Réponse", table_sheet1$X6), ]
+      table_sheet1 <- table_sheet1[!grepl("Réponse|Response", table_sheet1$X6), ]
 
       # drop empty columns
       table_sheet1 <- table_sheet1[ , -c(2:5)]
@@ -137,14 +165,14 @@ merge_kpi <- function(inputdirectory,
       ## Dealing with the observation columns (free text comments)
 
       # set those that are same same as dictionary to NA
-      table_sheet1$X8[table_sheet1$X8 == comment_dict$french_comment] <- NA
+      table_sheet1$X8[table_sheet1$X8 == comment_dict[, paste0(lang, "_comment")]] <- NA
 
 
       ## pull together the wide version of data set
       if (wide) {
 
         # define which rows to keep based on dictionary
-        obs_rows <- which(!is.na(comment_dict$french_comment))
+        obs_rows <- which(!is.na(comment_dict[ , paste0(lang, "_comment")]))
 
         # pull together observations in an appropriately named dataframe
         observations <- data.frame(
@@ -170,7 +198,7 @@ merge_kpi <- function(inputdirectory,
         # recode variables based on dictionary
         upload$X1 <- matchmaker::match_vec(upload$X1,
                                            dictionary = var_dict,
-                                           from = "french_label",
+                                           from = paste0(lang, "_label"),
                                            to = "var_name")
         # flip to wide format
         upload <- tidyr::pivot_wider(upload,
@@ -181,9 +209,6 @@ merge_kpi <- function(inputdirectory,
         upload$date <- as.Date(
           as.numeric(upload$date),
           origin = "1899-12-30")
-
-
-        # TODO consider making week using tsibble
 
 
         # TODO can make colour coded variables for the indicators as specified
@@ -236,7 +261,7 @@ merge_kpi <- function(inputdirectory,
         # recode variables based on dictionary
         table_sheet1$X1 <- matchmaker::match_vec(table_sheet1$X1,
                                            dictionary = var_dict,
-                                           from = "french_label",
+                                           from = paste0(lang, "_label"),
                                            to = "var_name")
 
         # fix names
@@ -258,59 +283,59 @@ merge_kpi <- function(inputdirectory,
 
         # assign values
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                        table_sheet1$num_vars >= 90] <- "Bon"
+                                        table_sheet1$num_vars >= 90] <- "Good"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
                                   table_sheet1$num_vars >= 80 &
                                   table_sheet1$num_vars <= 89] <- "Acceptable"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                  table_sheet1$num_vars < 80] <- "Mediocre"
+                                  table_sheet1$num_vars < 80] <- "Poor"
 
         # choose which rows to work on
         indicator_rows <- paste0("indicator_", c(6, 19:21))
 
         # assign values
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                  table_sheet1$num_vars < 5] <- "Bon"
+                                  table_sheet1$num_vars < 5] <- "Good"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
                                   table_sheet1$num_vars >= 5 &
                                   table_sheet1$num_vars <= 10] <- "Acceptable"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                  table_sheet1$num_vars > 10] <- "Mediocre"
+                                  table_sheet1$num_vars > 10] <- "Poor"
 
         # choose which rows to work on
         indicator_rows <- paste0("indicator_", c(12:13))
 
         # assign values
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                  table_sheet1$num_vars > 60] <- "Bon"
+                                  table_sheet1$num_vars > 60] <- "Good"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
                                   table_sheet1$num_vars >= 40 &
                                   table_sheet1$num_vars <= 60] <- "Acceptable"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                  table_sheet1$num_vars < 40] <- "Mediocre"
+                                  table_sheet1$num_vars < 40] <- "Poor"
 
         # choose which rows to work on
         indicator_rows <- paste0("indicator_", c(14, 16))
 
         # assign values
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                  table_sheet1$num_vars > 40] <- "Bon"
+                                  table_sheet1$num_vars > 40] <- "Good"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
                                   table_sheet1$num_vars >= 20 &
                                   table_sheet1$num_vars <= 40] <- "Acceptable"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                  table_sheet1$num_vars < 20] <- "Mediocre"
+                                  table_sheet1$num_vars < 20] <- "Poor"
         # choose which rows to work on
         indicator_rows <- paste0("indicator_", c(14, 16))
 
         # assign values
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                  table_sheet1$num_vars >= 0] <- "Bon"
+                                  table_sheet1$num_vars >= 0] <- "Good"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
                                   table_sheet1$num_vars >= -5 &
                                   table_sheet1$num_vars <= -1] <- "Acceptable"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
-                                  table_sheet1$num_vars < -5] <- "Mediocre"
+                                  table_sheet1$num_vars < -5] <- "Poor"
 
 
         # save data in list
@@ -339,7 +364,7 @@ merge_kpi <- function(inputdirectory,
 
   ## output file
   # define path to output to
-  filename <- base::paste(outputdirectory,"/",outputname,".xlsx", sep = "")
+  filename <- base::paste0(outputdirectory,"/",outputname,".xlsx")
   # write file
   rio::export(output, file = filename)
 
