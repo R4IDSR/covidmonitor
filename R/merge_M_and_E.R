@@ -31,7 +31,7 @@ merge_kpi <- function(inputdirectory,
                      wide = TRUE) {
 
   # Read in file list. Creat output directory.
-  files <- base::list.files(path = inputdirectory,
+  files <- list.files(path = inputdirectory,
                             full.names = TRUE,
                             recursive = TRUE)
 
@@ -40,7 +40,7 @@ merge_kpi <- function(inputdirectory,
   files <- files[-grep("---.|Combined.csv", files)]
 
   # create folder for output
-  base::dir.create(outputdirectory, showWarnings = FALSE)
+  dir.create(outputdirectory, showWarnings = FALSE)
 
 
   # read in dictionary for renaming variables
@@ -63,15 +63,21 @@ merge_kpi <- function(inputdirectory,
   output <- list()
 
   # for each file listed
-  for (f in 1:base::length(files)) {
+  for (f in 1:length(files)) {
 
 
     ## for those fitting the standard template
     if (template) {
 
       # read in excel sheet of interest
-      og_sheet <- rio::import(files[f], which = "Data fields",
-                              col_names = paste0("X", 1:8))
+      # try "Data fields" tab and if error than try "Saisie des donees"
+      og_sheet <- tryCatch(expr = {rio::import(files[f], which = "Data fields",
+                                               col_names = paste0("X", 1:8))},
+               error = function(e){
+                 rio::import(files[f], which = "Saisie des données",
+                                         col_names = paste0("X", 1:8))})
+
+
 
       ## define language
       lang <- dplyr::case_when(
