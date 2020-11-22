@@ -17,12 +17,13 @@
 #' @importFrom rio import export
 #' @importFrom tidyr fill pivot_wider
 #' @importFrom matchmaker match_vec
-#' @importFrom dplyr bind_rows case_when
+#' @importFrom dplyr bind_rows case_when select_if
 #'
 #' @author Alice Carr, Alex Spina
 #' @export
 
 
+inputdirectory = "C:/Users/Spina/World Health Organization/COVID-19 - Outbreak Documentation/KPI"
 
 merge_kpi <- function(inputdirectory,
                      outputdirectory = tempdir(),
@@ -57,14 +58,19 @@ merge_kpi <- function(inputdirectory,
     which = 2
   )
 
-  # TODO add in a check to define if is template conform or not (and put that in template arg)
+
 
   # create an empty list to fill in with datasets
   output <- list()
 
+
+## TODO: fix ssd (f = 38), ssd (f = 47), ssd (f = 71), ssd (f = 74) bit in brackets keeps being swapped for current month (e.g. after indicator 27), also adding counts under indicator 12
+
   # for each file listed
   for (f in 1:length(files)) {
 
+
+    # TODO add in a check to define if is template conform or not (and put that in template arg)
 
     ## for those fitting the standard template
     if (template) {
@@ -72,17 +78,22 @@ merge_kpi <- function(inputdirectory,
       # read in excel sheet of interest
       # try "Data fields" tab and if error than try "Saisie des donees"
       og_sheet <- tryCatch(expr = {rio::import(files[f], which = "Data fields",
-                                               col_names = paste0("X", 1:8))},
+                                               col_names = FALSE)},
                error = function(e){
                  rio::import(files[f], which = "Saisie des données",
-                                         col_names = paste0("X", 1:8))})
+                             col_names = FALSE)})
 
 
+      ## only keep first 8 columns
+      og_sheet <- og_sheet[ , 1:8]
+
+      ## temporarily rename columns to be workable
+      colnames(og_sheet) <- paste0("X", 1:8)
 
       ## define language
       lang <- dplyr::case_when(
-        og_sheet$X1[1] == "Pays :"   ~   "french",
-        og_sheet$X1[1] == "Country:" ~   "english"
+        grepl("Pays", og_sheet$X1[1])   ~   "french",    ## weird character somewhere means cant just use ==
+        og_sheet$X1[1] == "Country:"    ~   "english"
       )
 
 
@@ -124,6 +135,8 @@ merge_kpi <- function(inputdirectory,
       names(yes_nos) <- c("X1", "X2")
       # drop missings
       yes_nos <- yes_nos[!is.na(yes_nos$X1), ]
+      # drop note on reporting frequency
+      yes_nos <- yes_nos[1:3, ]
 
 
       # cut_offs: the cut off values for evaluation of indicators
@@ -166,7 +179,8 @@ merge_kpi <- function(inputdirectory,
       table_sheet1 <- table_sheet1[!grepl("Réponse|Response", table_sheet1$X6), ]
 
       # drop empty columns
-      table_sheet1 <- table_sheet1[ , -c(2:5)]
+      table_sheet1 <- dplyr::select_if(table_sheet1,
+                                       ~!all(is.na(.)))
 
       ## Dealing with the observation columns (free text comments)
 
