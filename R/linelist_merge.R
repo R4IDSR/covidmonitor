@@ -89,9 +89,6 @@ require(dplyr)
 
      og_sheet<- cbind(og_sheet,dates)
 
-     # make column for ISO code
-    og_sheet$country_iso<-iso
-
     output_sheet<-og_sheet
 
     }else if(template==FALSE){
@@ -151,23 +148,19 @@ require(dplyr)
 
       output_sheet<- cbind(output_sheet,dates)
 
-      #remove rows where all columns except ID is missing
-      na_rows = output_sheet %>%
-        select(-patinfo_ID) %>%
-        is.na() %>%
-        rowSums() > 0
-
-      output_sheet<-  output_sheet %>%
-        filter(!na_rows)
-
-      # make column for ISO code
-      output_sheet$country_iso<-iso
-
 
     }else if(template=="SKIP"){
       print(base::paste(files[f],"country file no longer in use"))
       next
     }
+
+    #remove rows where all columns except ID is missing or id is missing (not a real row if so)
+    output_sheet$na_rows <- rowSums(!is.na(output_sheet))
+    output_sheet<-  output_sheet %>% filter(!is.na(patinfo_ID))  %>%  filter(na_rows > 1) %>% select(-c(na_rows))
+
+    # make column for ISO code
+    output_sheet$country_iso<-iso
+    names(output_sheet)<-tolower(names(output_sheet))
 
     #checking that variables of interest are not missing if so maipulate outputsheet so it isnt
     output_sheet$report_date<-output_sheet$report_date
@@ -192,7 +185,6 @@ require(dplyr)
     if(all(is.na(output_sheet$patinfo_resadmin2))){
       print("patinfo_resadmin2")
     }
-
 
     output_sheet$report_classif<-output_sheet$report_classif
     if(all(is.na(output_sheet$report_classif))){
@@ -242,6 +234,7 @@ require(dplyr)
     if(all(is.na(output_sheet$lab_resdate))){
       print("lab_resdate")
     }
+    #important to recode this
     output_sheet$patcourse_status<-output_sheet$patcourse_status
     if(all(is.na(output_sheet$patcourse_status))){
       print("patcourse_status")
@@ -249,13 +242,13 @@ require(dplyr)
     #ensure this is for death, some files ie. KEM had date of outcome column whihc was used in this place
     #some cases who were not dead would have this entred into their date of death
     #make date of death missing if patcourse_status !=dead
-    patcourse_datedeath<-
-    if(all(is.na(output_sheet$patinfo_resadmin2))){
-      print("patinfo_resadmin2")
+    output_sheet$patcourse_datedeath<-output_sheet$patcourse_datedeath
+    if(all(is.na(output_sheet$patcourse_datedeath))){
+      print("patcourse_datedeath")
     }
-    country_iso
-    if(all(is.na(output_sheet$patinfo_resadmin2))){
-      print("patinfo_resadmin2")
+    output_sheet$country_iso<-output_sheet$country_iso
+    if(all(is.na(output_sheet$country_iso))){
+      print("country_iso")
     }
 
 
