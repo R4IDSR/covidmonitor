@@ -59,11 +59,12 @@ require(dplyr)
   ulst<-list()
 
   # for each file listed
-  for (f in 1:10){
+  for (f in 1:10) {
   #for (f in 1:base::length(files)) {
     #isocode of country file
     iso<-substr(tools::file_path_sans_ext(basename(files[f])), 0, 3)
-    print(iso)
+
+      print(iso)
     #for this iso code set parameters dictating file load in and clean process
     sheetname<-template_check$sheetname[template_check$country==iso]
     skip<-template_check$skip[template_check$country==iso]
@@ -82,14 +83,38 @@ require(dplyr)
      og_sheet<-og_sheet[ , -which(names(og_sheet) %in% drop_nontemplate_vars)]
      }
 
+
+
      require(anytime)
-     dates<-og_sheet %>% select(contains("Date", ignore.case = T)) %>% mutate_if(is.character, as.numeric) %>% mutate_if(is.numeric,as.Date, origin="1899-12-30")
-     date_vars<-names(dates)
+     #handle dates that are numeric. All character dates -> NA.
+     # Convert to numeric and change date format using origin of excel
+     # Convert to character for final merge
+     datesnumeric<-og_sheet %>% select(contains("Date", ignore.case = T)) %>% mutate_if(is.character, as.numeric) %>% mutate_if(is.numeric,as.Date, origin="1899-12-30") %>% mutate_all(as.character)
+     datesnumeric$id<-rownames(datesnumeric)
+
+     #handle dates that are characters. Select virst 10 characters in value. This will select all dates. Convert character formats to same ones usng parse date time.
+     #Convert to numeric and change date format using origin of excel
+     # Convert to character for final merge
+     datescharacter<-og_sheet %>% select(contains("Date", ignore.case = T)) %>% mutate_at(vars(contains("Date", ignore.case = T)), ~ substr(., 1, 10)) %>% mutate_if(is.character, lubridate::parse_date_time, orders=c("ymd","dmy")) %>% mutate_if(is.character, as.numeric) %>%
+       mutate_if(is.numeric,as.Date, origin="1899-12-30") %>% mutate_all(as.character)
+     datescharacter$id<-rownames(datescharacter)
+
+     #Natural join of data frames, fills in missing values in one df with values from other if not misssing
+     dates<- rquery::natural_join(datesnumeric, datescharacter,
+                          by = "id",
+                          jointype = "FULL")
+
+    # final date handeling change all columns to date class type (double)
+    dates_final<- dates %>% mutate_at(vars(contains("Date", ignore.case = T)),anydate)
+
+    # mereg in these new handled dates to orginal sheet
+     date_vars<-names(dates_final)
      og_sheet<-og_sheet[ , -which(names(og_sheet) %in% date_vars)]
+     og_sheet$id<-rownames(og_sheet)
 
-     og_sheet<- cbind(og_sheet,dates)
+     output_sheet<- merge(og_sheet,dates_final, by="id") %>% select(-c(id))
 
-    output_sheet<-og_sheet
+     # outout sheet for next stage of function
 
     }else if(template==FALSE){
       #load in file
@@ -142,13 +167,25 @@ require(dplyr)
       }
       #handle all date variables
       require(anytime)
-      dates<-output_sheet %>% select(contains("Date", ignore.case = T)) %>% mutate_if(is.character, as.numeric) %>% mutate_if(is.numeric,as.Date, origin="1899-12-30")
-      date_vars<-names(dates)
+      datesnumeric<-output_sheet %>% select(contains("Date", ignore.case = T)) %>% mutate_if(is.character, as.numeric) %>% mutate_if(is.numeric,as.Date, origin="1899-12-30") %>% mutate_all(as.character)
+      datesnumeric$id<-rownames(datesnumeric)
+
+      datescharacter<-output_sheet %>% select(contains("Date", ignore.case = T)) %>% mutate_at(vars(contains("Date", ignore.case = T)), ~ substr(., 1, 10)) %>% mutate_if(is.character, lubridate::parse_date_time, orders=c("ymd","dmy")) %>% mutate_if(is.character, as.numeric) %>%
+        mutate_if(is.numeric,as.Date, origin="1899-12-30") %>% mutate_all(as.character)
+      datescharacter$id<-rownames(datescharacter)
+
+      dates<- rquery::natural_join(datesnumeric, datescharacter,
+                                   by = "id",
+                                   jointype = "FULL")
+
+
+      dates_final<- dates %>% mutate_at(vars(contains("Date", ignore.case = T)),anydate)
+
+      date_vars<-names(dates_final)
       output_sheet<-output_sheet[ , -which(names(output_sheet) %in% date_vars)]
+      output_sheet$id<-rownames(output_sheet)
 
-      output_sheet<- cbind(output_sheet,dates)
-
-
+      output_sheet<- merge(output_sheet,dates_final, by="id") %>% select(-c(id))
     }else if(template=="SKIP"){
       print(base::paste(files[f],"country file no longer in use"))
       next
@@ -160,106 +197,160 @@ require(dplyr)
 
     # make column for ISO code
     output_sheet$country_iso<-iso
+
+    #make variable nsames lower case for output sheet
     names(output_sheet)<-tolower(names(output_sheet))
 
-    #checking that variables of interest are not missing if so maipulate outputsheet so it isnt
-    output_sheet$report_date<-output_sheet$report_date
-    if(all(is.na(output_sheet$report_date))){
+
+  ######
+    #checking that variables of interest exists if not maipulate outputsheet so it isnt
+    vars<- colnames(output_sheet)
+    if(!("report_date" %in% vars)){
+      output_sheet$report_date<-NA
       print("report_date")
     }
-    output_sheet$patinfo_ageonset<-as.numeric(iconv(output_sheet$patinfo_ageonset, 'utf-8', 'ascii', sub=''))
-    if(all(is.na(output_sheet$patinfo_ageonset))){
+
+    if(!("patinfo_ageonset" %in% vars)){
       print("patinfo_ageonset")
+      output_sheet$patinfo_ageonset<-NA
+    }else{
+      output_sheet$patinfo_ageonset<-as.numeric(iconv(output_sheet$patinfo_ageonset, 'utf-8', 'ascii', sub=''))
     }
-    output_sheet$patinfo_sex<- substr(output_sheet$patinfo_sex,1,1)
-    if(all(is.na(output_sheet$patinfo_sex))){
+
+    if(!("patinfo_sex" %in% vars)){
       print("patinfo_sex")
+      output_sheet$patinfo_sex<-NA
+    }else{
+      output_sheet$patinfo_sex<- substr(output_sheet$patinfo_sex,1,1)
     }
 
-    output_sheet$patinfo_resadmin1<-output_sheet$patinfo_resadmin1
-      if(all(is.na(output_sheet$patinfo_resadmin1))){
+
+      if(!("patinfo_resadmin1" %in% vars)){
         print("patinfo_resadmin1")
+        output_sheet$patinfo_resadmin1<-NA
       }
 
-    output_sheet$patinfo_resadmin2<-output_sheet$patinfo_resadmin2
-    if(all(is.na(output_sheet$patinfo_resadmin2))){
+
+    if(!("patinfo_resadmin2" %in% vars)){
       print("patinfo_resadmin2")
+      output_sheet$patinfo_resadmin2<-NA
     }
 
-    output_sheet$report_classif<-output_sheet$report_classif
-    if(all(is.na(output_sheet$report_classif))){
+    # if missing this variable use lab result for COVID to code up
+    if(!("report_classif" %in% vars)){
       print("report_classif")
+      output_sheet$report_classif<-NA
+      output_sheet$report_classif<-output_sheet$lab_result
     }
 
-    output_sheet$sympt_presence<-output_sheet$sympt_presence
-      if(all(is.na(output_sheet$sympt_presence))){
-        print("sympt_presence")
+# if not missing date of sympotoms or if and variables containing patsymt is not missing make this variable ->1
+      if(!("pat_symptomatic" %in% vars)){
+        print("pat_symptomatic")
+        output_sheet$pat_symptomatic<-NA
       }
 
-    output_sheet$comcond_preexist1<-output_sheet$comcond_preexist1
-    if(all(is.na(output_sheet$comcond_preexist1))){
-      print("comcond_preexist1")
+    if(!("comcond_preexist" %in% vars)){
+      print("comcond_preexist")
+      output_sheet$comcond_preexist<-NA
     }
 
-    output_sheet$comcond_preexist<-output_sheet$comcond_preexist
-    if(all(is.na(output_sheet$comcond_preexist))){
-      print("comcond_preexist")
+    #recode if missing this variable code up from the spciafied column
+    if(!("comcond_preexist1" %in% vars)){
+      print("comcond_preexist1")
+      output_sheet$comcond_preexist1<-NA
+      output_sheet$comcond_preexist1<-ifelse(!is.na(output_sheet$comcond_preexist) & !grepl("NAO|NON|NO",output_sheet$comcond_preexist, ignore.case = T),"yes",output_sheet$comcond_preexist1)
     }
+
     #these needs recoding to just healthcareworker or not
-    output_sheet$patinfo_occus<-output_sheet$patinfo_occus
-    if(all(is.na(output_sheet$patinfo_occus))){
+
+    if(!("patinfo_occus" %in% vars)){
       print("patinfo_occus")
+      output_sheet$patinfo_occus<-NA
     }
-    output_sheet$expo_travel<-output_sheet$expo_travel
-    if(all(is.na(output_sheet$expo_travel))){
+
+    if(!("expo_travel" %in% vars)){
       print("expo_travel")
+      output_sheet$expo_travel<-NA
     }
-    output_sheet$expo_travel_country<- output_sheet$expo_travel_country
-    if(all(is.na(output_sheet$expo_travel_country))){
+
+
+    if(!("expo_travel_country" %in% vars)){
       print("expo_travel_country")
+      output_sheet$expo_travel_country<-NA
     }
-    output_sheet$expo_contact_case<-output_sheet$expo_contact_case
-    if(all(is.na(output_sheet$expo_contact_case))){
+
+    if(!("expo_contact_case" %in% vars)){
       print("expo_contact_case")
+      output_sheet$expo_contact_case<-NA
     }
-    output_sheet$lab_datetaken<-output_sheet$lab_datetaken
-    if(all(is.na(output_sheet$lab_datetaken))){
+
+    if(!("lab_datetaken" %in% vars)){
       print("lab_datetaken")
+      output_sheet$lab_datetaken<-NA
     }
-    output_sheet$lab_result<-output_sheet$lab_result
+
     if(all(is.na(output_sheet$lab_result))){
       print("lab_result")
+      output_sheet$lab_result<-NA
     }
-    output_sheet$lab_resdate<-output_sheet$lab_resdate
-    if(all(is.na(output_sheet$lab_resdate))){
+
+    if(!("lab_resdate" %in% vars)){
       print("lab_resdate")
+      output_sheet$lab_resdate<-NA
     }
-    #important to recode this
-    output_sheet$patcourse_status<-output_sheet$patcourse_status
-    if(all(is.na(output_sheet$patcourse_status))){
+
+    #Recode this if missing use patcurrent status
+    if(!("patcourse_status" %in% vars)){
       print("patcourse_status")
+      output_sheet$patcourse_status<-NA
+      output_sheet$patcourse_status<-output_sheet$patcurrent_status
+    }else if("patcurrent_status" %in% vars){
+      output_sheet$patcourse_status<-ifelse(is.na(output_sheet$patcourse_status),output_sheet$patcurrent_status,output_sheet$patcourse_status)
     }
+
     #ensure this is for death, some files ie. KEM had date of outcome column whihc was used in this place
     #some cases who were not dead would have this entred into their date of death
     #make date of death missing if patcourse_status !=dead
-    output_sheet$patcourse_datedeath<-output_sheet$patcourse_datedeath
-    if(all(is.na(output_sheet$patcourse_datedeath))){
+
+    if(!("patcourse_datedeath" %in% vars)){
       print("patcourse_datedeath")
-    }
-    output_sheet$country_iso<-output_sheet$country_iso
-    if(all(is.na(output_sheet$country_iso))){
-      print("country_iso")
+      output_sheet$patcourse_datedeath<-NA
+    }else{
+      output_sheet$patcourse_datedeath<- ifelse(!grepl("Obito|morte|dead",output_sheet$patcourse_status, ignore.case = T),NA,output_sheet$patcourse_datedeath)
+      output_sheet$patcourse_datedeath<- as.Date(output_sheet$patcourse_datedeath, origin = "1970-01-01")
     }
 
 
     #keep variables of interet
-    output_sheet<- output_sheet %>% dplyr::select(report_date, patinfo_ageonset, patinfo_sex, patinfo_resadmin1, patinfo_resadmin2, report_classif,sympt_presence,  comcond_preexist1, comcond_preexist, patinfo_occus, expo_travel, expo_travel_country, expo_contact_case, lab_result, lab_datetaken, lab_resdate, patcourse_status, patcourse_datedeath, country_iso)
+    output_sheet<- output_sheet %>% dplyr::select(report_date, patinfo_ageonset,
+                                                  patinfo_sex, patinfo_resadmin1,
+                                                  patinfo_resadmin2, report_classif,
+                                                  pat_symptomatic,
+                                                  comcond_preexist1, comcond_preexist,
+                                                  patinfo_occus, expo_travel, expo_travel_country,
+                                                  expo_contact_case, lab_result,
+                                                  lab_datetaken, lab_resdate,
+                                                  patcourse_status,
+                                                  patcourse_datedeath, country_iso)
 
     #add cleaned output sheet to a list
     output[[f]] <-output_sheet
-    #the unique values in each column
-    ulst[[f]] <- lapply(output_sheet, unique)
+
+# part of the debug progess can delet this chuck
+    #the unique values in each column to build dictionary to do second round of cleaning
+     ulst_sheet<- lapply(output_sheet[,sapply(output_sheet, is.character)], unique)
+     n.obs <- sapply(ulst_sheet, length)
+     seq.max <- seq_len(max(n.obs))
+     mat <- as.data.frame(sapply(ulst_sheet, "[", i = seq.max))
+     ulst[[f]]<-mat
+
   }
+
+
+  cleaning_dict<-do.call(merge,ulst)
+  cleaning_dict<- lapply(output_sheet[,sapply(output_sheet, is.character)], unique)
+
+
   big_data <- do.call(bind_rows, output)
   #find all possible values entries fro each of teh above variables for recoding
 
