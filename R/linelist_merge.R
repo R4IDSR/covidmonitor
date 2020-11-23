@@ -257,9 +257,22 @@ require(dplyr)
 
     #add cleaned output sheet to a list
     output[[f]] <-output_sheet
-    #the unique values in each column
-    ulst[[f]] <- lapply(output_sheet, unique)
+
+# part of the debug progess can delet this chuck
+    #the unique values in each column to build dictionary to do second round of cleaning
+     ulst_sheet<- lapply(output_sheet[,sapply(output_sheet, is.character)], unique)
+     n.obs <- sapply(ulst_sheet, length)
+     seq.max <- seq_len(max(n.obs))
+     mat <- as.data.frame(sapply(ulst_sheet, "[", i = seq.max))
+     ulst[[f]]<-mat
+
   }
+
+
+  cleaning_dict<-do.call(merge,ulst)
+  cleaning_dict<- lapply(output_sheet[,sapply(output_sheet, is.character)], unique)
+
+
   big_data <- do.call(bind_rows, output)
   #find all possible values entries fro each of teh above variables for recoding
 
