@@ -37,7 +37,11 @@ require(dplyr)
     here::here("inst","extdata", "linelist_dictionary.xlsx"),
     which = 1
   ) %>% as_tibble() %>%
-    linelist::clean_variable_names()
+    linelist::clean_variable_names() %>% mutate_at("old_var_r", gsub,pattern ="\\s+$", replacement ="" )
+
+
+  #names(og_sheet) <- gsub(x= names(og_sheet),pattern ="\r\n",replacement = "", fixed = T)
+  #names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+", replacement =" ")
 
   # read in dictionary for checking comments empty or not
   var_standards <- rio::import(
@@ -58,9 +62,10 @@ require(dplyr)
   output <- list()
   ulst<-list()
 
+
   # for each file listed
-  for (f in 1:10) {
-  #for (f in 1:base::length(files)) {
+  #for (f in 11:18) {
+  for (f in 1:base::length(files)) {
     #isocode of country file
     iso<-substr(tools::file_path_sans_ext(basename(files[f])), 0, 3)
 
@@ -70,20 +75,39 @@ require(dplyr)
     skip<-template_check$skip[template_check$country==iso]
     template<-template_check$template[template_check$country==iso]
 
+
+    # load in file
+    if(grepl(files[f],pattern="\\.xlsm$", ignore.case=TRUE)){
+      og_sheet <- readxl::read_excel(files[f], sheet=sheetname, skip=skip)
+    }else{
+      og_sheet <- rio::import(files[f], which=sheetname, skip=skip)
+    }
+
+    names(og_sheet) <- gsub(x= names(og_sheet),pattern ="\r\n",replacement = "", fixed = T)
+    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+", replacement =" ")
+    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+$", replacement ="")
+
+    # problem countries with regex patterns
+    if(iso=="CIV"){
+      og_sheet<-og_sheet %>% select(-c(1))
+    }
+
+    # filter variable cleaning dictionary specific to country file loaded
+    var_dict_country<- var_dict %>% filter(country==iso)
+
+    # list variables to drop that are non-template
+    drop_nontemplate_vars<- as.list(var_dict_country$old_var_r[var_dict_country$notes=="non_template" & !is.na(var_dict_country$notes)])
+
+    # drop variables from list which are non-tmeplate
+    if(length(drop_nontemplate_vars)!=0){
+      # drop variables from sheet which are non-tmeplate
+      og_sheet<-og_sheet[ , -which(names(og_sheet) %in% drop_nontemplate_vars)]
+    }
+
     # if file requires no cleaning as matched WHO standard template do this loop
     if(template==TRUE){
-     # load in file
-     og_sheet <- rio::import(files[f], which=sheetname, skip=skip)
-     # filter variable cleaning dictionary specific to country file loaded
-     var_dict_country<- var_dict %>% filter(country==iso)
-     # list variables to drop that are non-template
-     drop_nontemplate_vars<- as.list(var_dict_country$old_var_r[var_dict_country$notes=="non_template" & !is.na(var_dict_country$notes)])
-     if(length(drop_nontemplate_vars)!=0){
-     # drop variables from list which are non-tmeplate
-     og_sheet<-og_sheet[ , -which(names(og_sheet) %in% drop_nontemplate_vars)]
-     }
-
-
+     #names(og_sheet) <- gsub(x= names(og_sheet),pattern ="\r\n",replacement = "", fixed = T)
+     #names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+", replacement =" ")
 
      require(anytime)
      #handle dates that are numeric. All character dates -> NA.
@@ -107,7 +131,7 @@ require(dplyr)
     # final date handeling change all columns to date class type (double)
     dates_final<- dates %>% mutate_at(vars(contains("Date", ignore.case = T)),anydate)
 
-    # mereg in these new handled dates to orginal sheet
+    # merge in these new handled dates to orginal sheet
      date_vars<-names(dates_final)
      og_sheet<-og_sheet[ , -which(names(og_sheet) %in% date_vars)]
      og_sheet$id<-rownames(og_sheet)
@@ -115,17 +139,7 @@ require(dplyr)
      output_sheet<- merge(og_sheet,dates_final, by="id") %>% select(-c(id))
 
      # outout sheet for next stage of function
-
     }else if(template==FALSE){
-      #load in file
-      og_sheet <- rio::import(files[f], which=sheetname, skip=skip)
-      # filter variable cleaning dictionary specific to country file loaded
-      var_dict_country<- var_dict %>% filter(country==iso)
-
-      # list variables to drop that are non-template
-      drop_nontemplate_vars<- as.list(var_dict_country$old_var_r[var_dict_country$notes=="non_template" & !is.na(var_dict_country$notes)])
-      # drop variables from list which are non-tmeplate
-      og_sheet<-og_sheet[ , -which(names(og_sheet) %in% drop_nontemplate_vars)]
 
       # recode variables
 
@@ -158,12 +172,14 @@ require(dplyr)
 
       output_sheet<-og_sheet[ , -which(names(og_sheet) %in% recode_vars)]
       names(output_sheet) <- gsub(x= names(output_sheet),pattern ="\r\n",replacement = "", fixed = T)
+      names(output_sheet) <-gsub(x= names(output_sheet),pattern ="\\s+", replacement =" ")
       names(output_sheet) <- with(var_dict_country,new_var[match(names(output_sheet),old_var_r)])
       output_sheet<-cbind(output_sheet,recode_sheet)
       }else{
         output_sheet<- og_sheet
         names(output_sheet) <- gsub(x= names(output_sheet),pattern ="\r\n",replacement = "", fixed = T)
-        names(output_sheet) <- with(var_dict_country,new_var[match(names(output_sheet),old_var_r)])
+        names(output_sheet) <-gsub(x= names(output_sheet),pattern ="\\s+", replacement =" ")
+         names(output_sheet) <- with(var_dict_country,new_var[match(names(output_sheet),old_var_r)])
       }
       #handle all date variables
       require(anytime)
@@ -186,6 +202,7 @@ require(dplyr)
       output_sheet$id<-rownames(output_sheet)
 
       output_sheet<- merge(output_sheet,dates_final, by="id") %>% select(-c(id))
+
     }else if(template=="SKIP"){
       print(base::paste(files[f],"country file no longer in use"))
       next
@@ -203,8 +220,12 @@ require(dplyr)
 
 
   ######
-    #checking that variables of interest exists if not maipulate outputsheet so it isnt
+    #checking that variables of interest exists
+    #if not create missing column and if possible manipulate output_sheet using surrogate variables to in fill this column
+
     vars<- colnames(output_sheet)
+    output_sheet$id<-rownames(output_sheet)
+    # some countries missing this can use lab result date to infill in next clean
     if(!("report_date" %in% vars)){
       output_sheet$report_date<-NA
       print("report_date")
@@ -240,14 +261,31 @@ require(dplyr)
     if(!("report_classif" %in% vars)){
       print("report_classif")
       output_sheet$report_classif<-NA
-      output_sheet$report_classif<-output_sheet$lab_result
     }
 
-# if not missing date of sympotoms or if and variables containing patsymt is not missing make this variable ->1
+
+#creat syptomatic column if missing this column
       if(!("pat_symptomatic" %in% vars)){
         print("pat_symptomatic")
         output_sheet$pat_symptomatic<-NA
       }
+# fill in syp tomatic column if value is missing using other patsympt_ columns
+# if has yes in any of the patsympt clolums then make patsymtp = 1. If entries are missing in these columns
+# if all values are no  pat_symptomatic is set to 0
+# the pat_symptomatic is set to missing
+        symptoms<- output_sheet %>% select(id, starts_with("patsympt"))
+        # if were not missing these columns then complete this loop
+        if(dim(symptoms)[2]>0){
+        symptoms<- symptoms %>% mutate_at(vars(contains("other")), ~replace(., !is.na(.), "yes"))
+        symptoms<-data.frame(lapply(symptoms, function(x) {gsub("know", NA, x, ignore.case = T) }), stringsAsFactors=F)
+        symptoms$pat_symptomatic.fill <- (!!rowSums(sapply(symptoms, grepl, pattern = "yes|oui|sim", ignore.case=T)))*1
+        cols <- grep('patsympt', names(symptoms))
+        symptoms$pat_symptomatic.fill[rowSums(!is.na(symptoms[cols])) <1] <- NA
+        symptoms<-symptoms %>% select(c(id, pat_symptomatic.fill))
+        output_sheet<-cbind(output_sheet,symptoms)
+        output_sheet$pat_symptomatic<-ifelse(is.na(output_sheet$pat_symptomatic), output_sheet$pat_symptomatic.fill,output_sheet$pat_symptomatic )
+}
+
 
     if(!("comcond_preexist" %in% vars)){
       print("comcond_preexist")
@@ -258,10 +296,10 @@ require(dplyr)
     if(!("comcond_preexist1" %in% vars)){
       print("comcond_preexist1")
       output_sheet$comcond_preexist1<-NA
-      output_sheet$comcond_preexist1<-ifelse(!is.na(output_sheet$comcond_preexist) & !grepl("NAO|NON|NO",output_sheet$comcond_preexist, ignore.case = T),"yes",output_sheet$comcond_preexist1)
     }
+      output_sheet$comcond_preexist1<-ifelse(!is.na(output_sheet$comcond_preexist) & !grepl("NAO|NON|NO",output_sheet$comcond_preexist, ignore.case = T),"yes",output_sheet$comcond_preexist1)
 
-    #these needs recoding to just healthcareworker or not
+    #these needs recoding to just healthcareworker or not can be done by next dictionary
 
     if(!("patinfo_occus" %in% vars)){
       print("patinfo_occus")
@@ -289,6 +327,8 @@ require(dplyr)
       output_sheet$lab_datetaken<-NA
     }
 
+    # Some contires do not have lab result or erport classification
+      # handle this issue in next dictionary cleaning step
     if(all(is.na(output_sheet$lab_result))){
       print("lab_result")
       output_sheet$lab_result<-NA
@@ -303,25 +343,29 @@ require(dplyr)
     if(!("patcourse_status" %in% vars)){
       print("patcourse_status")
       output_sheet$patcourse_status<-NA
-      output_sheet$patcourse_status<-output_sheet$patcurrent_status
-    }else if("patcurrent_status" %in% vars){
+    }
+      if("patcurrent_status" %in% vars){
       output_sheet$patcourse_status<-ifelse(is.na(output_sheet$patcourse_status),output_sheet$patcurrent_status,output_sheet$patcourse_status)
     }
 
-    #ensure this is for death, some files ie. KEM had date of outcome column whihc was used in this place
+    #ensure this is for death, some files ie. KEN had date of outcome column whihc was used in this place
     #some cases who were not dead would have this entred into their date of death
     #make date of death missing if patcourse_status !=dead
 
     if(!("patcourse_datedeath" %in% vars)){
       print("patcourse_datedeath")
       output_sheet$patcourse_datedeath<-NA
-    }else{
-      output_sheet$patcourse_datedeath<- ifelse(!grepl("Obito|morte|dead",output_sheet$patcourse_status, ignore.case = T),NA,output_sheet$patcourse_datedeath)
-      output_sheet$patcourse_datedeath<- as.Date(output_sheet$patcourse_datedeath, origin = "1970-01-01")
     }
 
+if("patcourse_status" %in% vars){
+      output_sheet$patcourse_datedeath<- ifelse(!grepl("Obito|mort|dead|death",output_sheet$patcourse_status, ignore.case = T),NA,output_sheet$patcourse_datedeath)
+      output_sheet$patcourse_datedeath<- as.Date(output_sheet$patcourse_datedeath, origin = "1970-01-01")
+}else if("patcurrent_status" %in% vars) {
+  output_sheet$patcourse_datedeath<- ifelse(!grepl("Obito|mort|dead|death",output_sheet$patcourse_status, ignore.case = T),NA,output_sheet$patcourse_datedeath)
+  output_sheet$patcourse_datedeath<- as.Date(output_sheet$patcourse_datedeath, origin = "1970-01-01")
+}
 
-    #keep variables of interet
+    #keep variables of interest
     output_sheet<- output_sheet %>% dplyr::select(report_date, patinfo_ageonset,
                                                   patinfo_sex, patinfo_resadmin1,
                                                   patinfo_resadmin2, report_classif,
@@ -333,10 +377,12 @@ require(dplyr)
                                                   patcourse_status,
                                                   patcourse_datedeath, country_iso)
 
+
+
     #add cleaned output sheet to a list
     output[[f]] <-output_sheet
 
-# part of the debug progess can delet this chuck
+# part of the debug progess can delete this chuck when completed
     #the unique values in each column to build dictionary to do second round of cleaning
      ulst_sheet<- lapply(output_sheet[,sapply(output_sheet, is.character)], unique)
      n.obs <- sapply(ulst_sheet, length)
@@ -345,6 +391,7 @@ require(dplyr)
      ulst[[f]]<-mat
 
   }
+
 
 
   cleaning_dict<-do.call(merge,ulst)
