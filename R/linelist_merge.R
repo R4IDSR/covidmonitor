@@ -37,7 +37,7 @@ require(dplyr)
     here::here("inst","extdata", "linelist_dictionary.xlsx"),
     which = 1
   ) %>% as_tibble() %>%
-    linelist::clean_variable_names() %>% mutate_at("old_var_r", gsub,pattern ="\\s+$", replacement ="" )
+    linelist::clean_variable_names() %>% mutate_at("old_var_r", gsub,pattern ="\\s+$", replacement ="" ) %>% mutate_at("old_var_r", gsub,pattern ="\\s+", replacement =" ")
 
 
   #names(og_sheet) <- gsub(x= names(og_sheet),pattern ="\r\n",replacement = "", fixed = T)
@@ -64,8 +64,8 @@ require(dplyr)
 
 
   # for each file listed
-  #for (f in 11:18) {
-  for (f in 1:base::length(files)) {
+  for (f in 19:35) {
+  #for (f in 1:base::length(files)) {
     #isocode of country file
     iso<-substr(tools::file_path_sans_ext(basename(files[f])), 0, 3)
 
@@ -144,7 +144,9 @@ require(dplyr)
       # recode variables
 
       recode_vars<-as.list(var_dict_country$old_var_r[grepl("Recode",var_dict_country$notes) & !is.na(var_dict_country$notes)])
+
       if(length(recode_vars)!=0){
+        var_dict_country<- var_dict_country[var_dict_country$old_var_r %in% names(og_sheet),]
       variable_to<- sub("Recode to ", "",as.list(var_dict_country$notes[grepl("Recode",var_dict_country$notes) & !is.na(var_dict_country$notes)]))
       what_to_match<-unique(variable_to)
 
@@ -358,12 +360,18 @@ require(dplyr)
     }
 
 if("patcourse_status" %in% vars){
-      output_sheet$patcourse_datedeath<- ifelse(!grepl("Obito|mort|dead|death",output_sheet$patcourse_status, ignore.case = T),NA,output_sheet$patcourse_datedeath)
+  #for countries where date death and date dischrage were combined we have recoded to date of death
+  # fixing way this was coded here to set date of death to missing if patient is not dead
+      output_sheet$patcourse_datedeath<- ifelse(!grepl("Obito|mort|dead|death|deceased",output_sheet$patcourse_status, ignore.case = T),NA,output_sheet$patcourse_datedeath)
       output_sheet$patcourse_datedeath<- as.Date(output_sheet$patcourse_datedeath, origin = "1970-01-01")
+
 }else if("patcurrent_status" %in% vars) {
-  output_sheet$patcourse_datedeath<- ifelse(!grepl("Obito|mort|dead|death",output_sheet$patcourse_status, ignore.case = T),NA,output_sheet$patcourse_datedeath)
+  output_sheet$patcourse_datedeath<- ifelse(!grepl("Obito|mort|dead|death|deceased",output_sheet$patcourse_status, ignore.case = T),NA,output_sheet$patcourse_datedeath)
   output_sheet$patcourse_datedeath<- as.Date(output_sheet$patcourse_datedeath, origin = "1970-01-01")
 }
+
+
+
 
     #keep variables of interest
     output_sheet<- output_sheet %>% dplyr::select(report_date, patinfo_ageonset,
@@ -394,11 +402,17 @@ if("patcourse_status" %in% vars){
 
 
 
-  cleaning_dict<-do.call(merge,ulst)
-  cleaning_dict<- lapply(output_sheet[,sapply(output_sheet, is.character)], unique)
+  cleaning_dict<-Reduce(function(...) merge(..., all=T), ulst)
+  u<-lapply(cleaning_dict[,sapply(cleaning_dict, is.factor)], unique)
+  n.obs <- sapply(u, length)
+  seq.max <- seq_len(max(n.obs))
+  u_cleaning_dict <- as.data.frame(sapply(u, "[", i = seq.max))
 
 
-  big_data <- do.call(bind_rows, output)
+
+
+  big_data<-Reduce(function(...) merge(..., all=T), output)
+
   #find all possible values entries fro each of teh above variables for recoding
 
 
