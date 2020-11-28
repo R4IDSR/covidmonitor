@@ -352,13 +352,6 @@ merge_kpi <- function(inputdirectory,
         # remove combined variable
         table_sheet1 <- table_sheet1[, -2]
 
-
-        # recode variables based on dictionary (not necessary as done higher up)
-        # table_sheet1$X1 <- matchmaker::match_vec(table_sheet1$X1,
-        #                                    dictionary = var_dict,
-        #                                    from = paste0(lang, "_label"),
-        #                                    to = "var_name")
-
         # fix names
         names(table_sheet1) <- c("indicator",
                                  "reporting_frequency",
