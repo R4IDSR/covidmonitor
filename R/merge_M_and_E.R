@@ -271,10 +271,10 @@ merge_kpi <- function(inputdirectory,
       ## chuck a warning if any of those happened
       if (length(missings) > 0 | length(droppers) > 0 | length(doubles) > 0) {
         warning(
-            paste0(identifiers$X2[1], " W", identifiers$X2[3],                                 "| ",
-            length(missings), " missings added: ", paste0(missings, sep = ", "),               "| ",
-            length(droppers), " non-template dropped: ", paste0(droppers, sep = ", "),         "| ",
-            length(doubles), " duplicates dropped: ",  paste0(doubles, sep = ", ")),
+            paste0(identifiers$X2[1], " W", identifiers$X2[3],                            "| ",
+            length(missings), " missings added: ",        paste0(missings, sep = ", "),   "| ",
+            length(droppers), " non-template dropped: ",  paste0(droppers, sep = ", "),   "| ",
+            length(doubles),  " duplicates dropped: ",    paste0(doubles, sep = ", ")),
           call. = FALSE
         )
 
