@@ -2,35 +2,31 @@
 % Please edit documentation in R/merge_M_and_E.R
 \name{merge_kpi}
 \alias{merge_kpi}
-\title{Merge weekly report monitoring and evaluation data.
-Currently based on Guinea template; to be further in case of non-templated
-documents}
+\title{Merge country monitoring and evaluation data (key performance indicators)}
 \usage{
 merge_kpi(
   inputdirectory,
+  region = "AFRO",
   outputdirectory = tempdir(),
   outputname = "kpi_merged",
-  template = TRUE,
   wide = TRUE
 )
 }
 \arguments{
 \item{inputdirectory}{path to folder containing datasets}
 
-\item{outputdirectory}{path to folder where merged file is to be saved}
+\item{region}{3 letter ISO-code for country of interest, in quotation marks,
+combined multiple countries with c(...), default is "AFRO" to read in all available.}
+
+\item{outputdirectory}{path to folder where merged file is to be saved (must exist already)}
 
 \item{outputname}{character string to name merged file}
-
-\item{template}{logical (TRUE/FALSE) of whether the input data frame fits
-the standard template}
 
 \item{wide}{logical (TRUE/FALSE) of whether the output data frame should be
 in wide format (default), else will produce long format data}
 }
 \description{
-Merge weekly report monitoring and evaluation data.
-Currently based on Guinea template; to be further in case of non-templated
-documents
+Merge country monitoring and evaluation data (key performance indicators)
 }
 \author{
 Alice Carr, Alex Spina
