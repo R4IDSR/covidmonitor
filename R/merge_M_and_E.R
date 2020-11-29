@@ -263,6 +263,24 @@ merge_kpi <- function(inputdirectory,
 
 
 ## TODO: add in a message about which variables were added and dropped
+
+      ## get which vars were dropped or added
+      droppers <- table_sheet1$X1[!which(table_sheet1$X1 %in% indis_of_interest)]
+      doubles  <- table_sheet1$X1[duplicated(table_sheet1$X1)]
+
+      ## chuck a warning if any of those happened
+      if (length(missings) > 0 | length(droppers) > 0 | length(doubles) > 0) {
+        warning(
+            paste0(identifiers$X2[1], " W", identifiers$X2[3],                                 "| ",
+            length(missings), " missings added: ", paste0(missings, sep = ", "),               "| ",
+            length(droppers), " non-template dropped: ", paste0(droppers, sep = ", "),         "| ",
+            length(doubles), " duplicates dropped: ",  paste0(doubles, sep = ", ")),
+          call. = FALSE
+        )
+
+      }
+
+
       ## only keep indicators of interest
       table_sheet1 <- table_sheet1[which(table_sheet1$X1 %in% indis_of_interest), ]
 
