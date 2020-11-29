@@ -344,12 +344,99 @@ merge_kpi <- function(inputdirectory,
           origin = "1899-12-30")
 
 
-        # TODO can make colour coded variables for the indicators as specified
-        #ie
-        #upload["Indicator_6_evaluation",f] <- ifelse(table_sheet1$X2[6]<5 ,"well",
-        # ifelse(table_sheet1$X2[6]>10,"poor",
-        #        ifelse(table_sheet1$X2[6]>=5 & table_sheet1$X2[6]<=10, "acceptable",
-        #               NA)))
+        # choose all the indicator columns
+        indicator_cols <- paste0("indicator_",
+                                 sort(
+                                   c(
+                                   7, 9:11, 15, 17, 18, 24,
+                                   6, 19:21,
+                                   12:13,
+                                   14, 16,
+                                   27:30)
+                                   ))
+
+        # for each indicator column create appropriate evaluation column
+        for (i in indicator_cols) {
+
+          # make in to a numeric variable
+          upload[ , i] <- suppressWarnings(as.numeric(upload[ , i]))
+
+          # define name of an evaluation column
+          eval_col <- paste0("eval_", i)
+
+          # create an empty eval column
+          upload[ , eval_col] <- NA_character_
+
+          # choose indicators to work on
+          if (i %in% paste0("indicator_", c(7, 9:11, 15, 17, 18, 24))) {
+
+            # define groups
+            upload[!is.na(upload[[i]]) &
+                            upload[[i]] >= 90,
+                   eval_col] <- "Good"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] >= 80 & upload[[i]] <= 89,
+                   eval_col] <- "Acceptable"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] < 80,
+                   eval_col] <- "Poor"
+          }
+
+          if (i %in% paste0("indicator_", c(6, 19:21))) {
+            # define groups
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] < 5,
+                   eval_col] <- "Good"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] >= 5 & upload[[i]] <= 10,
+                   eval_col] <- "Acceptable"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] > 10,
+                   eval_col] <- "Poor"
+
+          }
+
+          if (i %in% paste0("indicator_", c(12:13))) {
+            # define groups
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] > 60,
+                   eval_col] <- "Good"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] >= 40 & upload[[i]] <= 60,
+                   eval_col] <- "Acceptable"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] < 40,
+                   eval_col] <- "Poor"
+          }
+
+          if (i %in% paste0("indicator_", c(14, 16))) {
+            # define groups
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] > 40,
+                   eval_col] <- "Good"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] >= 20 & upload[[i]] <= 40,
+                   eval_col] <- "Acceptable"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] < 20,
+                   eval_col] <- "Poor"
+          }
+
+          if (i %in% paste0("indicator_", c(27:30))) {
+            # define groups
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] >= 0,
+                   eval_col] <- "Good"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] >= -5 & upload[[i]] < 0,
+                   eval_col] <- "Acceptable"
+            upload[!is.na(upload[[i]]) &
+                     upload[[i]] < -5,
+                   eval_col] <- "Poor"
+          }
+        }
+
+
 
         # save data in list
         output[[f]] <- upload
@@ -452,14 +539,14 @@ merge_kpi <- function(inputdirectory,
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
                                   table_sheet1$num_vars < 20] <- "Poor"
         # choose which rows to work on
-        indicator_rows <- paste0("indicator_", c(14, 16))
+        indicator_rows <- paste0("indicator_", c(27:30))
 
         # assign values
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
                                   table_sheet1$num_vars >= 0] <- "Good"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
                                   table_sheet1$num_vars >= -5 &
-                                  table_sheet1$num_vars <= -1] <- "Acceptable"
+                                  table_sheet1$num_vars < -0] <- "Acceptable"
         table_sheet1$evaluation[table_sheet1$indicator %in% indicator_rows &
                                   table_sheet1$num_vars < -5] <- "Poor"
 
