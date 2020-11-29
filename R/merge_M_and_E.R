@@ -382,7 +382,7 @@ merge_kpi <- function(inputdirectory,
         # see which indicators are character responses
         char_vars <- grep("[a-z]", table_sheet1$X6)
 
-        # copy indicator reponses in to new columns
+        # copy indicator responses in to new columns
         table_sheet1$num_vars <- table_sheet1$X6
         table_sheet1$str_vars <- table_sheet1$X6
 
@@ -391,7 +391,7 @@ merge_kpi <- function(inputdirectory,
         table_sheet1[-char_vars, "str_vars"] <- NA
 
         # make numeric indicators
-        table_sheet1$num_vars <- as.numeric(table_sheet1$num_vars)
+        table_sheet1$num_vars <- suppressWarnings(as.numeric(table_sheet1$num_vars))
 
         # remove combined variable
         table_sheet1 <- table_sheet1[, -2]
