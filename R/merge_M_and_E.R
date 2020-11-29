@@ -2,12 +2,12 @@
 #'
 #' @param inputdirectory path to folder containing datasets
 #'
+#' @param region 3 letter ISO-code for country of interest, in quotation marks,
+#' combined multiple countries with c(...), default is "AFRO" to read in all available.
+#'
 #' @param outputdirectory path to folder where merged file is to be saved
 #'
 #' @param outputname character string to name merged file
-#'
-#' @param template logical (TRUE/FALSE) of whether the input data frame fits
-#' the standard template
 #'
 #' @param wide logical (TRUE/FALSE) of whether the output data frame should be
 #' in wide format (default), else will produce long format data
@@ -24,9 +24,10 @@
 inputdirectory = "C:/Users/Spina/World Health Organization/COVID-19 - Outbreak Documentation/KPI"
 
 merge_kpi <- function(inputdirectory,
-                     outputdirectory = tempdir(),
-                     outputname = "kpi_merged",
-                     wide = TRUE) {
+                      region = "AFRO",
+                      outputdirectory = tempdir(),
+                      outputname = "kpi_merged",
+                      wide = TRUE) {
 
   # Read in file list. Creat output directory.
   files <- list.files(path = inputdirectory,
@@ -36,6 +37,28 @@ merge_kpi <- function(inputdirectory,
   # drop files we dont want
   # those that have not been assigned a name yet and the combined.csv
   files <- files[-grep("---.|Combined.csv", files)]
+
+
+  if (length(files) == 0) {
+    stop("No files found, check the path used for inputdirectory")
+  }
+
+  ## subset files to read-in if region is not "AFRO"
+  if (!"AFRO" %in% region) {
+
+    ## combine all the countries in to one string seperated with OR
+    lookers <- paste(paste0("/", region, ".KPI"), collapse = "|")
+
+    ## subset file list based on search strings
+    files <- files[grepl(lookers, files)]
+
+  }
+
+  ## chuck an error if ISO Code wrong
+  if (length(files) == 0) {
+    stop("No files found, check the country codes are correct (3 letters)")
+  }
+
 
   # create folder for output
   dir.create(outputdirectory, showWarnings = FALSE)
@@ -260,9 +283,6 @@ merge_kpi <- function(inputdirectory,
         table_sheet1 <- rbind(table_sheet1, temp_adder)
 
       }
-
-
-## TODO: add in a message about which variables were added and dropped
 
       ## get which vars were dropped or added
       droppers <- table_sheet1$X1[!which(table_sheet1$X1 %in% indis_of_interest)]
