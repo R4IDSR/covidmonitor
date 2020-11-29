@@ -224,9 +224,8 @@ merge_kpi <- function(inputdirectory,
 
       ## Dealing with the observation columns (free text comments)
 
-#### TODO: swap this to use match!! otherwise get warnings (might also not be same?)
       # set those that are same same as dictionary to NA
-      table_sheet1$X8[table_sheet1$X8 == comment_dict[, paste0(lang, "_comment")]] <- NA
+      table_sheet1$X8[table_sheet1$X8 %in% comment_dict[, paste0(lang, "_comment")]] <- NA
 
 
       ## fix which variables we want to keep and the order
