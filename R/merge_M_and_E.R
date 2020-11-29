@@ -5,7 +5,7 @@
 #' @param region 3 letter ISO-code for country of interest, in quotation marks,
 #' combined multiple countries with c(...), default is "AFRO" to read in all available.
 #'
-#' @param outputdirectory path to folder where merged file is to be saved
+#' @param outputdirectory path to folder where merged file is to be saved (must exist already)
 #'
 #' @param outputname character string to name merged file
 #'
@@ -58,10 +58,6 @@ merge_kpi <- function(inputdirectory,
   if (length(files) == 0) {
     stop("No files found, check the country codes are correct (3 letters)")
   }
-
-
-  # create folder for output
-  dir.create(outputdirectory, showWarnings = FALSE)
 
 
   # read in dictionary for renaming variables
