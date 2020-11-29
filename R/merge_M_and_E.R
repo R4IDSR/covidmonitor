@@ -1,6 +1,4 @@
-#' Merge weekly report monitoring and evaluation data.
-#' Currently based on Guinea template; to be further in case of non-templated
-#' documents
+#' Merge country monitoring and evaluation data (key performance indicators)
 #'
 #' @param inputdirectory path to folder containing datasets
 #'
@@ -226,6 +224,7 @@ merge_kpi <- function(inputdirectory,
 
       ## Dealing with the observation columns (free text comments)
 
+#### TODO: swap this to use match!! otherwise get warnings (might also not be same?)
       # set those that are same same as dictionary to NA
       table_sheet1$X8[table_sheet1$X8 == comment_dict[, paste0(lang, "_comment")]] <- NA
 
@@ -246,10 +245,14 @@ merge_kpi <- function(inputdirectory,
 
       ## add in any missing variables
       if (length(missings) > 0) {
+
+        # different number of columns for long/wide (long has groups added)
+        colnums <- ifelse(wide, 3, 4)
+
         # create a matrix missing variables and appropriate empties
         temp_adder <- matrix(c(missings,
-                               rep.int(NA, length(missings) * 4)),
-                             ncol = 5)
+                               rep.int(NA, length(missings) * colnums)),
+                             ncol = colnums + 1)
 
         # make column names fit
         colnames(temp_adder) <- names(table_sheet1)
@@ -260,14 +263,18 @@ merge_kpi <- function(inputdirectory,
       }
 
 
+## TODO: add in a message about which variables were added and dropped
       ## only keep indicators of interest
       table_sheet1 <- table_sheet1[which(table_sheet1$X1 %in% indis_of_interest), ]
+
+      ## drop duplicates from X1 (issue from niger - merged X1 row that splits in X2)
+      table_sheet1 <- table_sheet1[!duplicated(table_sheet1$X1), ]
 
       ## arrange indicators (rows) according to template
       table_sheet1 <- dplyr::arrange(table_sheet1,
                                      match(X1, indis_of_interest))
 
-## TODO: Fix wide version!
+
 ############# pull together the wide version of data set
       if (wide) {
 
@@ -283,7 +290,7 @@ merge_kpi <- function(inputdirectory,
         )
 
         # only keep indicators and obs
-        table_sheet1 <- subset(table_sheet1, select = c(1, 2))
+        table_sheet1 <- table_sheet1[ , c(1, 2)]
         names(table_sheet1) <- c("X1", "X2")
 
         # bind rows of different bits want
@@ -294,11 +301,11 @@ merge_kpi <- function(inputdirectory,
           observations
         )
 
-
         # flip to wide format
         upload <- tidyr::pivot_wider(upload,
                                      names_from = X1,
-                                     values_from = X2)
+                                     values_from = X2,
+                                     names_repair = "minimal")
 
         # change to date
         upload$date <- as.Date(
