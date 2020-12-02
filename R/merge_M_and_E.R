@@ -20,6 +20,8 @@
 #' @author Alice Carr, Alex Spina
 #' @export
 
+## TODO: Delete this
+# inputdirectory = "C:/Users/Spina/World Health Organization/COVID-19 - Outbreak Documentation/KPI"
 
 merge_kpi <- function(inputdirectory,
                       region = "AFRO",
