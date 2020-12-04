@@ -1,6 +1,6 @@
-#' Merge country monitoring and evaluation data (key performance indicators)
+#' Merge country monitoring and evaluation excel tool data (key performance indicators)
 #'
-#' @param inputdirectory path to folder containing datasets
+#' @param inputdirectory path to folder containing excel tool datasets
 #'
 #' @param region 3 letter ISO-code for country of interest, in quotation marks,
 #' combined multiple countries with c(...), default is "AFRO" to read in all available.
@@ -36,7 +36,7 @@ merge_kpi <- function(inputdirectory,
 
   # drop files we dont want
   # those that have not been assigned a name yet and the combined.csv
-  files <- files[-grep("---.|Combined.csv", files)]
+  files <- files[-grep("---.|Combined.csv|CombinedKPIDataFile.xlsx|!", files)]
 
 
   if (length(files) == 0) {
