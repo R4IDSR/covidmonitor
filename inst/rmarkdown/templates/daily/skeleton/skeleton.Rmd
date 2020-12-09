@@ -1,0 +1,616 @@
+---
+title: "COVID-19 Pandemic in the African Region"
+subtitle: "Epi situation update as of `r format(Sys.Date() - 1 , '%d %B %Y')`"
+output: 
+  powerpoint_presentation: 
+    reference_doc: "C:/Program Files/R/R-4.0.2/library/covidmonitor/extdata/Afro_Template.pptx"
+
+---
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// setup \\\
+--------------------------------------------------------------------------------
+Several packages are required for different aspects of  analysis with *R*. 
+You will need to install these before starting. 
+These packages can be quite large and may take a while to download in the
+field. If you have access to a USB key with these packages, it makes sense to
+copy and paste the packages into your computer's R package library 
+(run the command .libPaths() to see the folder path). 
+For help installing packages, please visit https://r4epis.netlify.com/welcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r setup, include=FALSE, cache=F}
+
+# set options for rmarkdown 
+knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
+                      message = FALSE, # hide all messages in output
+                      warning = FALSE, # hide all warnings in output
+                      collapse = TRUE, # combine all source/output to single block
+                      fig.align = 'center', # centre figures on page
+                      fig.height = 4,  # define figure height 
+                      dpi = 300,       # define figure definitions 
+                      cache = F)       # run all code chunks (even if repeated)
+
+
+## Installing required packages for this template
+required_packages <- c(
+                       "knitr",          # create output docs
+                       "here",           # find your files
+                       "rio",            # read in data
+                       "lubridate",      # work with dates
+                       "tsibble",        # for working with dates as time series
+                       "slider",         # for calculating rolling averages
+                       "dplyr",          # clean/shape data
+                       "janitor",        # clean/shape data
+                       "tidyr",          # clean/shape data
+                       "matchmaker",     # dictionary-based standardization of variables
+                       "ggplot2",        # create plots
+                       "ggrepel",        # space out overlapping data in ggplot2
+                       "flextable",      # for nice tables
+                       "grid",           # add flextables to ggplots 
+                       "patchwork",      # combine ggplots 
+                       "RColorBrewer"    # for defining colour schemes
+                       )
+  
+for (pkg in required_packages) {
+  # install packages if not already present
+  if (!pkg %in% rownames(installed.packages())) {
+    install.packages(pkg)
+  }
+  # load packages to this current session 
+  library(pkg, character.only = TRUE)
+}
+
+```
+
+
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// define current week \\\
+--------------------------------------------------------------------------------
+ 
+This section is used to define your week of interest. It will be used later
+to filter your outputs. 
+You can also set the day which your epiweek starts on - the default for this
+is Monday. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r define_current_week}
+
+## current week
+this_week <- Sys.Date() - 1
+
+## week number of current week
+No_week <- week(this_week)
+
+## number of expected countries reporting  
+expected_countries <- 46
+```
+
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// import_data \\\
+--------------------------------------------------------------------------------
+This chunk reads in all the data necessary as well as dictionaries. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+
+```{r import_data}
+
+## define path to folder with raw data 
+# data_folder <- here::here("data", "raw")
+data_folder <- "C:\\Users\\Spina\\Downloads\\Daily_updates\\data\\raw"
+
+## import linelist of confirmed cases 
+covid_afro_00 <- 
+  paste0(data_folder, "/ConfirmedCases.csv") %>% 
+  rio::import() %>% 
+  ## clean variable names 
+  clean_names() 
+
+## import data dictionary 
+cleaning_rules <- rio::import(here::here("data","cleaned","cleaning_rules_s.xlsx"))
+
+## import population data 
+Tab_pop <- paste0(data_folder, "/Tab_population.xlsx") %>% 
+  rio::import() %>% 
+  ## clean variable names 
+  clean_names() %>%  
+  select(country, population) 
+
+## import population over 65 
+pop65 <- paste0(data_folder, "/population_over65.xlsx") %>% 
+  rio::import() %>% 
+  ## clean variable names 
+  clean_names() %>% 
+  select(country, perc_over65)
+
+## import testing data 
+## source of data: https://ourworldindata.org/coronavirus-testing 
+covid_testing_0 <- paste0(data_folder, "/owid-covid-data.csv") %>% 
+  rio::import() %>% 
+  ## clean variable names 
+  clean_names() %>%  
+  filter(continent == "Africa", 
+         !location %in% c("Djibouti",
+                          "Egypt",
+                          "Morocco",
+                          "Tunisia",
+                          "Sudan" ,
+                          "Western Sahara",
+                          "Somalia",
+                          "Libya"))
+
+## import case counts data from WHO eastern mediteranean region
+## source of data: https://covid19.who.int/table
+covid_emro_0 <-  paste0(data_folder, "/WHO_COVID-19_global_table.csv") %>% 
+  rio::import() %>% 
+  ## clean variable names 
+  clean_names() %>% 
+  filter(name %in% c("Djibouti", 
+                     "Egypt", 
+                     "Morocco", 
+                     "Somalia", 
+                     "Sudan", 
+                     "Tunisia", 
+                     "Libya"))
+
+
+```
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// clean_data \\\
+--------------------------------------------------------------------------------
+This chunk does basic data cleaning 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r clean_data}
+
+#### clean covid linelist 
+
+## fix date variables in original dataset 
+covid_afro_00$date_of_death <- lubridate::as_date(covid_afro_00$date_of_death)
+covid_afro_00$reporting_date <- lubridate::as_date(covid_afro_00$reporting_date)
+
+## create clean dataset by recoding variables based on dictionary
+covid_afro <- match_df(covid_afro_00, dictionary = cleaning_rules)
+
+## find the date of the initial report (for whole region)
+covid_afro$first_report <- min(covid_afro$reporting_date)
+
+# create epi-week variables (return the first date of the week it is in)
+covid_afro$epi_week <- floor_date(covid_afro$reporting_date,
+                                  "week", week_start = 1)
+
+covid_afro$epi_week2 <- floor_date(covid_afro$date_of_death, 
+                                   "week", week_start = 1)
+
+## create an epi week variable as calendar week 
+## so can show prev week easier 
+covid_afro$calendar_week <- week(covid_afro$reporting_date)
+covid_afro$calendar_week2 <- week(covid_afro$date_of_death)
+
+## add in continent variable
+covid_afro$continent <- "Afro"
+
+
+#### clean covid testing 
+
+## rename country
+covid_testing_0 <- covid_testing_0 %>% 
+  rename("country" = "location")
+
+## create clean dataset by recoding variables based on dictionary
+covid_testing <- match_df(covid_testing_0, dictionary = cleaning_rules)
+
+## fix date variable
+covid_testing$date <- as.Date(covid_testing$date)
+
+#### clean covid testing 
+
+## rename country 
+covid_emro_0 <- covid_emro_0 %>% 
+  rename("country" = "name")
+
+covid_emro <- match_df(covid_emro_0, dictionary = cleaning_rules)
+
+```
+
+
+
+# Disclaimer
+
+- The following slides are not final and are produced solely for the purposes of informing operations. As investigations are ongoing, all data are subject to verification and change. Not all analyses are updated daily, and additional analyses will be added/removed depending on operational needs at the time of production.
+- **All information in this slide deck should be treated as confidential and provisional** and should not be shared or used for any outward facing products.
+
+ 
+# Cumulative Covid-19 Cases and Deaths on the African continent
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// cumul_case_death_continent \\\
+--------------------------------------------------------------------------------
+This chunk creates a table of counts for the cumulative number of cases and 
+deaths on the continent
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r cumul_case_death_continent}
+
+## get the number of cases and deaths from AFRO
+tab_afro_cases_deaths <- covid_afro %>% 
+                         summarise(
+                           continent = "AFRO", 
+                           cases = n(), 
+                           deaths = sum(outcome == "Dead")
+                         )
+## get the number of cases and deaths from EMRO
+tab_emro_cases_deaths <- covid_emro %>%
+                         summarise(
+                           continent = "EMRO", 
+                           cases = sum(cases_cumulative_total), 
+                           deaths = sum(deaths_cumulative_total)
+                         )
+
+## combined AFRO and EMRO 
+bind_rows(tab_afro_cases_deaths,tab_emro_cases_deaths) %>% 
+  ## add row totals 
+  janitor::adorn_totals("row", fill="-", na.rm="TRUE") %>% 
+  mutate(
+    ## calculate case fatality ratio based on counts
+    cfr          =  round((deaths/cases) * 100, 1), 
+    ## add total cases and deaths as columns (workaround) 
+    ## surprised that this ignores janitor totals (this is a good thing)
+    total_cases  = sum(cases, na.rm = "TRUE"), 
+    total_deaths = sum(deaths, na.rm = "TRUE"), 
+    ## calculate percentages from totals
+    perc_cases   = round( (cases / (total_cases / 2)) * 100, 1), 
+    perc_deaths  = round( (deaths / (total_deaths / 2)) * 100, 1)
+    ) %>% 
+  ## drop the total columns and rename others
+  select(
+    "WHO region"   = continent, 
+    "Cumul cases"  = cases, 
+    "Cumul deaths" = deaths, 
+    "CFR(%)"       = cfr, 
+    "% cases"      = perc_cases, 
+    "% deaths"    = perc_deaths
+  ) %>% 
+  ## create a flextable with cell width of 2 inches and heights of 1 inches each
+  flextable(cwidth = 2, cheight = 1) %>% 
+  ## make all the text size 18 
+  fontsize(size = 18, part = "all") %>% 
+  ## add a foot note referencing column 1 row 2
+  footnote(j = 1, i = 2, 
+                      value = as_paragraph(
+                        "Includes: Djibouti, Egypt, Morocco, Libya, Somalia , Sudan, and Tunisia"))
+```
+
+
+# Cumulative Cases, Deaths and Recoveries Reported from 47 Countries
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// epicurve_counts_continent \\\
+--------------------------------------------------------------------------------
+This chunk creates a table of counts for the cumulative number of cases and 
+deaths on the continent and overlays it on an epicurve with 7 day rolling average
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r epicurve_counts_continent, fig.width = 20, fig.height = 8} 
+
+## get table with counts to overlay 
+tab_afro_cases_deaths2 <- covid_afro %>%
+  summarise(
+    cases          = n(), 
+    deaths         = sum(outcome == "Dead"),
+    cfr            =  round(deaths/cases * 100, 1),
+    recovered      = sum(outcome == "Recovered"),
+    perc_recovered = round(recovered/cases * 100, 1)
+    ) %>% 
+    ## drop the total columns and rename others
+  select(
+    "Cumul Cases"  = cases, 
+    "Cumul Deaths" = deaths, 
+    "CFR(%)"       = cfr, 
+    "Cumul Recovered"      = recovered, 
+    "% Recovered"          = perc_recovered
+  ) %>% 
+  ## flip to long 
+  mutate(across(everything(), as.character)) %>% 
+  pivot_longer(everything(), 
+               names_to = "WHO Region", 
+               values_to = "AFRO") %>% 
+  flextable(cwidth = c(1.5, 1)) %>% 
+  as_raster()
+
+## plot table so can add with patchwork to epicurve 
+tab_afro_cases_deaths2_plot <- ggplot() + 
+  annotation_custom(grid::rasterGrob(tab_afro_cases_deaths2), 
+                    xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) + 
+  theme_void()
+
+
+## get counts for plotting epicurve
+tab_epi_group2 <- covid_afro %>% 
+  ## count cases by date
+  count(reporting_date, name = "new_cases") %>% 
+  ## define as a time series object to be able to calculate rolling average
+  tsibble(index = reporting_date) %>% 
+  ## calculate the average number of cases in the preceding 7 days
+  mutate(sevendayavg = slide_dbl(new_cases, 
+                                 ~mean(.x, na.rm = TRUE),
+                                 ## number of previous days count to include
+                                 .before = 7, 
+                                 ## only include days which have the full 7 previous days available
+                                 .complete = TRUE))
+
+ 
+epi_group2 <- tab_epi_group2 %>% 
+    ggplot(aes(x= reporting_date)) +
+    geom_bar(aes(y = new_cases), fill="#92a8d1", 
+             stat = "identity",
+             position = "stack",
+             colour = "#92a8d1") + 
+    geom_line(aes(y=sevendayavg, lty = "7-day rolling avg"),color="red", size = 1) + 
+    scale_x_date(breaks = "1 week",date_minor_breaks = '1 day', 
+               date_labels = "%b %d",
+               limits = c( 
+                 as.Date("2020-02-25"), 
+                 max(na.omit(tab_epi_group2$reporting_date)))
+               ) +
+    ## make y and x axes meet at the origin (x = 0, y = 0) 
+    scale_y_continuous(expand = c(0,0), limits = c(0, NA)) + 
+    labs(x = "Date", y = "Confirmed cases (n)") + 
+    ## give classic black/white axes
+    theme_classic() + 
+    theme(
+      text = element_text(size = 18), 
+      ## rotate x axis labels
+      axis.text.x = element_text(angle = 45, vjust = .5),
+      axis.title = element_text(color = "black",face="bold"), 
+      legend.title = element_blank(), 
+      legend.text = element_text(color = "black"), 
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      ## colour and size the grid lines in the plot 
+      # panel.grid.minor = element_line(colour = "grey90", size = 0.5), 
+      panel.grid.major = element_line(colour = "grey90")
+      )
+
+
+epi_group2 + inset_element(tab_afro_cases_deaths2_plot, 
+                           left = 0, bottom = 0.6, 
+                           right = 0.6, top = 1, align_to = "full")
+
+```
+
+# New Cases Reported Over the Past 7 Days
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// percentage_changes \\\
+--------------------------------------------------------------------------------
+This chunk creates a table of counts for number of new cases in the past seven 
+days and percentage change from previous week by country
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r percentage_changes, fig.width = 20, fig.height = 8}
+
+## define the date of previous 7 and 14 days 
+day_last7 <- this_week - 7
+day_last14 <- this_week - 14
+
+## define which period cases occured in 
+covid_afro <- mutate(covid_afro, 
+                     period = case_when(
+                       reporting_date >= day_last7    ~ "last7days", 
+                       reporting_date < day_last7 & 
+                         reporting_date >= day_last14 ~ "previous_7days", 
+                       TRUE ~ "Before_last14"
+                     ))
+
+## create table of cases by country counting new cases in last 7 days
+tab_increase_cases <- covid_afro %>% 
+  count(country, period) %>% 
+  pivot_wider(names_from = period, 
+              values_from = n, 
+              values_fill = 0) %>% 
+  mutate(perc_change = round(((last7days - previous_7days) / previous_7days) * 100, 1)) %>% 
+  arrange(desc(perc_change)) %>% 
+  select("Country" = country, 
+         "New cases in last 7 days" = last7days, 
+         "New cases in previous 7 days" = previous_7days, 
+         "% change" = perc_change)
+
+## make it in to a flextable as a raster for plotting in ggplot
+increasers <- flextable(
+  filter(tab_increase_cases, `% change` > 0), 
+  cwidth = c(1, 1.5, 1.5, 1)) %>% 
+  as_raster()
+
+## plot flextable as image 
+increasers_plot <- ggplot() + 
+  annotation_custom(grid::rasterGrob(increasers), 
+                    xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) + 
+  theme_void()
+
+## make it in to a flextable as a raster for plotting in ggplot
+decreasers <- flextable(
+  filter(tab_increase_cases, `% change` <= 0), 
+  cwidth = c(1, 1.5, 1.5, 1)) %>% 
+  as_raster()
+
+## plot flextable as image 
+decreasers_plot <- ggplot() + 
+  annotation_custom(grid::rasterGrob(decreasers), 
+                    xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) + 
+  theme_void()
+
+## combine two plots next to each other
+increasers_plot + decreasers_plot
+
+```
+
+# Daily Trends for the Top 10 Countries in the Past 28 Days
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// top_ten_trend \\\
+--------------------------------------------------------------------------------
+This chunk creates faceted plots by country for 10 highest incidence in past 28 days
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+```{r top_ten_trend,  fig.width = 20, fig.height = 8}
+
+pub_theme4 <- theme(text=element_text(family="Arial"),
+                    axis.text.x=element_text(size=14,angle=45,color="black", vjust=0.5, hjust=0.5),
+                    axis.text.y=element_text(size=14,color="black"),
+                    axis.title.y=element_text(size=14,face="bold",color="black"),
+                    axis.title.x=element_text(size=14,face="bold",color="black"),
+                    panel.grid.major.y=element_line(size=.5, color="gray", linetype = "solid"),
+                    panel.grid.major.x = element_blank(),
+                    panel.grid.minor.x = element_blank(),
+                    #panel.grid.minor=element_blank(),
+                    panel.background=element_rect(fill = "white", colour = "grey50"),
+                    axis.line=element_line(colour="black"),legend.position = "bottom",
+                    legend.direction = "horizontal",
+                    legend.key.size= unit(0.4, "cm"),
+                    legend.title = element_text(size=14,face="italic"),
+                    legend.text=element_text(size=14, face="italic"),
+                    #panel.border=element_rect(colour="black", fill=NA, size=1),
+                    plot.margin=unit(c(0.2,0.2,0.2,0.2),"in"))
+
+#make own colour palettes
+nb.cols <- 12
+mycolors <- colorRampPalette(brewer.pal(8, "Dark2"))(nb.cols)
+
+
+#initialise empty datafram for all countires 
+countries <- covid_afro %>% 
+  select(country) %>%
+  summarise(country = unique(country)) 
+
+#make reporting date appropriate class 
+covid_afro$reporting_date <- as.Date(covid_afro$reporting_date)
+
+
+#number of days since first report
+
+day_last28 <- today() - 28
+
+all <- covid_afro %>% 
+  mutate(hcw  = ifelse(
+    grepl("Confirmed", final_epi_classification, ignore.case = T) & 
+      grepl("yes", healthcare_worker, ignore.case = T), 1, 0)) %>%
+  filter(reporting_date >= day_last28) %>% 
+  group_by(country) %>% 
+  summarise(dayslastreport = as.numeric(difftime(Sys.Date(), max(reporting_date))),
+            datelastreport = format(max(reporting_date), "%d %B %Y"),
+            confirmed      = length(grep("Confirmed",final_epi_classification,ignore.case = T)),
+            probable       = length(grep("Probable",final_epi_classification, ignore.case = T)),
+            dead           = length(grep("Dead",final_outcome, ignore.case = T)),
+            recovered      = length(grep("Recovered",final_outcome, ignore.case = T)),
+            active         = length(grep("Alive|Probable",final_outcome, ignore.case = T)),
+            hwc_confirmed  = sum(hcw, na.rm=T)) %>% 
+  mutate(CFR          = round((dead/confirmed)*100, digits = 0),
+         recoveryrate = round((recovered/(confirmed+probable))*100, digits = 0),
+         hcwrate      = round((hwc_confirmed/(confirmed))*100, digits = 0))
+
+
+
+#identify Top 10 countries based off confirmed case numbers
+
+
+top10 <- all %>% 
+  top_n(10,confirmed) %>% 
+  arrange(desc(confirmed)) %>% 
+  mutate(label=paste0(country,' n=', confirmed))
+
+top10list <- unique(top10$country)
+
+#Create dataframe for Overall top 10 countries  
+ epitop10 <- covid_afro %>% 
+   mutate(top10 = country %in% top10list) %>%
+   mutate(top10 = as.factor(ifelse(top10==TRUE,country,"Other"))) %>%
+   dplyr::group_by(reporting_date, top10) %>%
+   dplyr::summarise(
+     confirmed = length(grep("Confirmed",final_epi_classification,ignore.case = T)),
+     dead=length(grep("Dead", final_outcome, ignore.case = T))) %>% group_by(top10) %>% 
+   mutate(label.con = paste(top10,"n=",sum(confirmed, na.rm=T)), 
+          label.dead= paste(top10,"n=",sum(dead, na.rm=T))) %>% 
+   group_by(top10) %>% 
+   mutate(confirmed.cumsum=cumsum(confirmed),
+          dead=cumsum(dead)) %>% 
+   tsibble::as_tsibble(key=top10,index = reporting_date) %>% 
+   tsibble::group_by_key() %>%
+   mutate(sevendayavg_top10 = slider::slide_dbl(confirmed, 
+                                    ~mean(.x, na.rm = TRUE),
+                                    .before = 7, ## number of previous days count to include
+                                    .complete = TRUE),
+                                    sevendayavg_top10_cumsum = slider::slide_dbl(confirmed.cumsum, 
+                                    ~mean(.x, na.rm = TRUE),
+                                    .before = 7, ## number of previous days count to include
+                                    .complete = TRUE)) ## only include days which have the full 7 previous days available 
+ 
+ 
+ ## Distribution of new cases with a 7-day moving average by reporting date for current top 10 coutries for cases in the African region,
+ 
+ggplot(epitop10,
+       aes(x = as.Date(epitop10$reporting_date), y = epitop10$confirmed)) +
+  geom_bar(aes(fill = label.con), stat = "identity", size = 0.3) + 
+  geom_line(aes(x = as.Date(epitop10$reporting_date), 
+                y = round(epitop10$sevendayavg_top10), 
+                colour="#ff3300"), size=1) +
+  facet_wrap(~label.con, ncol=3, scales = "free_y") + 
+  scale_x_date(date_breaks = "1 month", 
+               date_labels = "%b %d", 
+               limits = c(as.Date(min(epitop10$reporting_date)),
+                          as.Date(max(epitop10$reporting_date))), expand = c(0,0)) + 
+  pub_theme4 + 
+  theme(strip.text = element_text(size=10)) +
+  labs(x="Date",y="Absolute number of confirmed cases") + 
+  scale_color_discrete(name = "7 day rolling average", labels = c("")) + 
+  scale_fill_manual(values = mycolors, guide = FALSE)
+
+```
+
+
+# Cases per 100,000 Population: Weekly Trends in the African Region
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// weekly_attack_rate \\\
+--------------------------------------------------------------------------------
+This chunk creates a plot for the overall weekly attack rate
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r weekly_attack_rate}
+
+
+covid_afro$week_report <- floor_date(covid_afro$reporting_date, "week", week_start = 1)
+
+tab_cases_afro <- covid_afro %>% 
+  filter(country!="") %>% 
+  select(week_report) %>% 
+  count(week_report) %>% 
+  group_by(week_report) %>% 
+  mutate(weekly_incidence_Afro=round((n/ sum(Tab_pop$population) ) * 100000,1))
+
+
+# mean(tab_cases_afro$weekly_incidence_Afro)
+# 
+# max(tab_cases_afro$weekly_incidence_Afro)
+
+ggplot(tab_cases_afro, aes(x = week_report, y = weekly_incidence_Afro)) + 
+  geom_line(size=1.2, colour="#ff0000") + 
+  scale_x_date(date_breaks = '7 day', date_minor_breaks = '1 day', 
+  date_labels = '%d %m') +
+  theme(axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1, size = 12)) +
+  theme(axis.title.x = element_text(color = "black", size = 12, face="bold")) +
+  theme(axis.title.y = element_text(color = "black", size = 12, face="bold")) +
+  theme(legend.title = element_text(color = "black", size = 12),
+  legend.text = element_text(color = "black", size = 12))+
+  ylab(label="Weekly attack rate per 100,000 people") + 
+  xlab("Reporting week") +
+  ylim(0,15)
+
+```
+
