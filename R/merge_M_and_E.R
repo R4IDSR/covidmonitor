@@ -462,16 +462,18 @@ merge_kpi <- function(inputdirectory,
           origin = "1899-12-30")
         table_sheet1$epi_week <- as.numeric(identifiers[3, 2])
 
-        # see which indicators are character responses
-        char_vars <- grep("[a-z]", table_sheet1$X6)
+        # define which indicators are character responses
+        char_vars <- var_dict$var_name[
+          var_dict$var_type %in% c("date_vars", "yn_vars", "ynp_vars")]
 
         # copy indicator responses in to new columns
         table_sheet1$num_vars <- table_sheet1$X6
         table_sheet1$str_vars <- table_sheet1$X6
 
         # set appropriate ones to empty
-        table_sheet1$num_vars[char_vars] <- NA
-        table_sheet1[-char_vars, "str_vars"] <- NA
+        table_sheet1$num_vars[table_sheet1$X1 %in% char_vars] <- NA
+        table_sheet1[!table_sheet1$X1 %in% char_vars,
+                     "str_vars"] <- NA
 
         # make numeric indicators
         table_sheet1$num_vars <- suppressWarnings(as.numeric(table_sheet1$num_vars))
