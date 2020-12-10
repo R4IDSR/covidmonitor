@@ -4,7 +4,7 @@ subtitle: "Epi situation update as of `r format(Sys.Date() - 1 , '%d %B %Y')`"
 output: 
   powerpoint_presentation: 
     reference_doc: "C:/Program Files/R/R-4.0.2/library/covidmonitor/extdata/Afro_Template.pptx"
-
+    keep_md: true
 ---
 
 
@@ -27,8 +27,9 @@ knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
                       message = FALSE, # hide all messages in output
                       warning = FALSE, # hide all warnings in output
                       collapse = TRUE, # combine all source/output to single block
-                      fig.align = 'center', # centre figures on page
-                      fig.height = 4,  # define figure height 
+                      fig.align = 'left', # left align figures on page
+                      fig.width = 20,  # define figure width
+                      fig.height = 8,  # define figure height
                       dpi = 300,       # define figure definitions 
                       cache = F)       # run all code chunks (even if repeated)
 
@@ -62,6 +63,26 @@ for (pkg in required_packages) {
   library(pkg, character.only = TRUE)
 }
 
+
+
+## define a theme for ggplot (so all look similar) 
+epi_theme <- theme_classic() + 
+    theme(
+      text = element_text(size = 18, family = "Arial"), 
+      ## rotate x axis labels
+      axis.text.x  = element_text(angle = 45, vjust = 0.5),
+      axis.title   = element_text(color = "black", face = "bold"), 
+      legend.title = element_blank(), 
+      legend.text  = element_text(color = "black"), 
+      legend.position  = "bottom",
+      legend.direction = "horizontal",
+      ## colour and size the grid lines in the plot 
+      # panel.grid.minor = element_line(colour = "grey90", size = 0.5), 
+      panel.grid.major = element_line(colour = "grey90")
+      )
+
+
+
 ```
 
 
@@ -86,7 +107,7 @@ this_week <- Sys.Date() - 1
 No_week <- week(this_week)
 
 ## number of expected countries reporting  
-expected_countries <- 46
+expected_countries <- 47
 ```
 
 
@@ -210,6 +231,9 @@ covid_testing <- match_df(covid_testing_0, dictionary = cleaning_rules)
 ## fix date variable
 covid_testing$date <- as.Date(covid_testing$date)
 
+## make sure number of new tests is numeric
+covid_testing$new_tests <- as.numeric(covid_testing$new_tests)
+
 #### clean covid testing 
 
 ## rename country 
@@ -298,7 +322,7 @@ This chunk creates a table of counts for the cumulative number of cases and
 deaths on the continent and overlays it on an epicurve with 7 day rolling average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
 
-```{r epicurve_counts_continent, fig.width = 20, fig.height = 8} 
+```{r epicurve_counts_continent} 
 
 ## get table with counts to overlay 
 tab_afro_cases_deaths2 <- covid_afro %>%
@@ -363,21 +387,8 @@ epi_group2 <- tab_epi_group2 %>%
     ## make y and x axes meet at the origin (x = 0, y = 0) 
     scale_y_continuous(expand = c(0,0), limits = c(0, NA)) + 
     labs(x = "Date", y = "Confirmed cases (n)") + 
-    ## give classic black/white axes
-    theme_classic() + 
-    theme(
-      text = element_text(size = 18), 
-      ## rotate x axis labels
-      axis.text.x = element_text(angle = 45, vjust = .5),
-      axis.title = element_text(color = "black",face="bold"), 
-      legend.title = element_blank(), 
-      legend.text = element_text(color = "black"), 
-      legend.position = "bottom",
-      legend.direction = "horizontal",
-      ## colour and size the grid lines in the plot 
-      # panel.grid.minor = element_line(colour = "grey90", size = 0.5), 
-      panel.grid.major = element_line(colour = "grey90")
-      )
+    # apply standard theme
+    epi_theme
 
 
 epi_group2 + inset_element(tab_afro_cases_deaths2_plot, 
@@ -395,7 +406,7 @@ This chunk creates a table of counts for number of new cases in the past seven
 days and percentage change from previous week by country
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
 
-```{r percentage_changes, fig.width = 20, fig.height = 8}
+```{r percentage_changes}
 
 ## define the date of previous 7 and 14 days 
 day_last7 <- this_week - 7
@@ -459,25 +470,7 @@ increasers_plot + decreasers_plot
 --------------------------------------------------------------------------------
 This chunk creates faceted plots by country for 10 highest incidence in past 28 days
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-```{r top_ten_trend,  fig.width = 20, fig.height = 8}
-
-pub_theme4 <- theme(text=element_text(family="Arial"),
-                    axis.text.x=element_text(size=14,angle=45,color="black", vjust=0.5, hjust=0.5),
-                    axis.text.y=element_text(size=14,color="black"),
-                    axis.title.y=element_text(size=14,face="bold",color="black"),
-                    axis.title.x=element_text(size=14,face="bold",color="black"),
-                    panel.grid.major.y=element_line(size=.5, color="gray", linetype = "solid"),
-                    panel.grid.major.x = element_blank(),
-                    panel.grid.minor.x = element_blank(),
-                    #panel.grid.minor=element_blank(),
-                    panel.background=element_rect(fill = "white", colour = "grey50"),
-                    axis.line=element_line(colour="black"),legend.position = "bottom",
-                    legend.direction = "horizontal",
-                    legend.key.size= unit(0.4, "cm"),
-                    legend.title = element_text(size=14,face="italic"),
-                    legend.text=element_text(size=14, face="italic"),
-                    #panel.border=element_rect(colour="black", fill=NA, size=1),
-                    plot.margin=unit(c(0.2,0.2,0.2,0.2),"in"))
+```{r top_ten_trend}
 
 #make own colour palettes
 nb.cols <- 12
@@ -530,7 +523,7 @@ top10list <- unique(top10$country)
 #Create dataframe for Overall top 10 countries  
  epitop10 <- covid_afro %>% 
    mutate(top10 = country %in% top10list) %>%
-   mutate(top10 = as.factor(ifelse(top10==TRUE,country,"Other"))) %>%
+   mutate(top10 = as.factor(ifelse(top10 == TRUE, country, "Other"))) %>%
    dplyr::group_by(reporting_date, top10) %>%
    dplyr::summarise(
      confirmed = length(grep("Confirmed",final_epi_classification,ignore.case = T)),
@@ -565,10 +558,10 @@ ggplot(epitop10,
                date_labels = "%b %d", 
                limits = c(as.Date(min(epitop10$reporting_date)),
                           as.Date(max(epitop10$reporting_date))), expand = c(0,0)) + 
-  pub_theme4 + 
+  epi_theme + 
   theme(strip.text = element_text(size=10)) +
   labs(x="Date",y="Absolute number of confirmed cases") + 
-  scale_color_discrete(name = "7 day rolling average", labels = c("")) + 
+  scale_color_discrete(name = "7 day rolling average", labels = c("7 day rolling average")) + 
   scale_fill_manual(values = mycolors, guide = FALSE)
 
 ```
@@ -584,33 +577,328 @@ This chunk creates a plot for the overall weekly attack rate
 
 ```{r weekly_attack_rate}
 
-
-covid_afro$week_report <- floor_date(covid_afro$reporting_date, "week", week_start = 1)
-
+## get counts by week 
 tab_cases_afro <- covid_afro %>% 
-  filter(country!="") %>% 
-  select(week_report) %>% 
-  count(week_report) %>% 
-  group_by(week_report) %>% 
-  mutate(weekly_incidence_Afro=round((n/ sum(Tab_pop$population) ) * 100000,1))
+  count(epi_week) %>% 
+  ## calculate the attack rate per 100k
+  mutate(weekly_incidence_Afro = round(
+    (n / sum(Tab_pop$population)) * 100000, 1))
 
-
-# mean(tab_cases_afro$weekly_incidence_Afro)
-# 
-# max(tab_cases_afro$weekly_incidence_Afro)
-
-ggplot(tab_cases_afro, aes(x = week_report, y = weekly_incidence_Afro)) + 
-  geom_line(size=1.2, colour="#ff0000") + 
-  scale_x_date(date_breaks = '7 day', date_minor_breaks = '1 day', 
-  date_labels = '%d %m') +
-  theme(axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1, size = 12)) +
-  theme(axis.title.x = element_text(color = "black", size = 12, face="bold")) +
-  theme(axis.title.y = element_text(color = "black", size = 12, face="bold")) +
-  theme(legend.title = element_text(color = "black", size = 12),
-  legend.text = element_text(color = "black", size = 12))+
+## plot 
+ggplot(tab_cases_afro, aes(x = epi_week, y = weekly_incidence_Afro)) + 
+  geom_line(size = 1.2, colour = "#ff0000") + 
+  scale_x_date(breaks = "1 week",date_minor_breaks = '1 day', 
+             date_labels = "%b %d",
+             limits = c( 
+               as.Date("2020-02-25"), 
+               max(na.omit(tab_epi_group2$reporting_date)))
+             ) +
+  ## make y and x axes meet at the origin (x = 0, y = 0) 
+  scale_y_continuous(expand = c(0,0), limits = c(0, 15)) + 
+  epi_theme + 
   ylab(label="Weekly attack rate per 100,000 people") + 
-  xlab("Reporting week") +
-  ylim(0,15)
+  xlab("Reporting week")
+```
+
+
+# Attack Rate in the Last 14 Days by Country 
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// two_week_attack_rate \\\
+--------------------------------------------------------------------------------
+This chunk creates a plot for the attack rate in the last fourteen days by 
+country
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r two_week_attack_rate}
+
+## get counts per country
+Tab_cases_last <- covid_afro %>% 
+                  filter(reporting_date >= day_last14) %>% 
+                  count(country)
+
+## combine with population counts and calc rates
+tab_incidence_country <- Tab_pop %>% 
+                         left_join(Tab_cases_last, by = "country") %>% 
+                         mutate(attack_rate = round( (n / population) * 100000, 1)) %>% 
+                         arrange(desc(attack_rate))
+
+## find highest point for y and x axis annotation 
+topy <- ceiling(
+  max(tab_incidence_country$attack_rate, na.rm = TRUE)) + 5
+
+## plot 
+ggplot(tab_incidence_country, 
+       aes(x = reorder(country, -attack_rate ), y = attack_rate)) + 
+  geom_col(fill = "#4f3222") +
+  geom_text(aes(label = attack_rate),
+            position = position_dodge(width = 0.9),
+            vjust = -0.25, size = 5, face = "bold") +
+  ## make y and x axes meet at the origin (x = 0, y = 0) 
+  scale_y_continuous(expand = c(0,0), limits = c(0, topy)) + 
+  labs(x = "Country",
+    y = "Cases per 100,000 pop in the last 14 days") + 
+  epi_theme
+```
+
+# Deaths per 100,000 Population Vs Cases per 100,000 in Past 14 Days
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// deaths_v_cases \\\
+--------------------------------------------------------------------------------
+This chunk creates a dot plot comparing deaths to cases per 100k population and 
+highlighting low death/high incidence countries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r deaths_v_cases}
+
+
+## get counts of deaths 
+Tab_deaths_last14 <- covid_afro %>% 
+                  filter(date_of_death >= day_last14 & 
+                           outcome == "Dead") %>% 
+                  count(country)
+
+## combine with population to get rates
+tab_death_million <- Tab_deaths_last14 %>% 
+  left_join(Tab_pop, by = "country") %>% 
+    mutate(deaths_capita = round((n / population) * 100000, 1)) 
+
+
+## combine with previous table of incidence 
+tab_death_cases_million2 <- tab_death_million %>% 
+                     left_join(tab_incidence_country, by = "country")
+
+## find highest point for y axis annotation 
+topy <- ceiling(
+  max(tab_death_cases_million2$attack_rate, na.rm = TRUE)
+)
+
+
+## remove country names if mortality rate is zero (so not overcrowding plot)
+tab_death_cases_million2 <- tab_death_cases_million2 %>% 
+  mutate(country = case_when(
+    deaths_capita == 0 ~ "", 
+    TRUE ~ country
+  ))
+
+
+
+
+ggplot(data = tab_death_cases_million2, 
+       aes(x = deaths_capita, y = attack_rate, label = country)) + 
+  geom_point(col = "#c83349", size = 2) +
+  geom_text_repel(col = "blue", size = 6, 
+                  segment.alpha = 0.6, segment.size = 0.5) +
+  annotate("rect", 
+           xmin = 0, xmax = 0.5, 
+           ymin = 20, ymax = topy, 
+           alpha = 0.2) + 
+  annotate("text", 
+           size = 4,
+           x = 0.6, y = 50, 
+           label = "High incidence / low mortality countries") + 
+  ## make y and x axes meet at the origin (x = 0, y = 0) 
+  scale_y_continuous(expand = c(0,0), limits = c(0, NA)) + 
+  epi_theme + 
+  xlab("Deaths per 10,000 pop in the last 14 days") +
+  ylab("Cases per 100,000 pop in the last 14 days ")
 
 ```
+
+# Testing Performance in the African Region - Last 4 Weeks
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// testing_performance \\\
+--------------------------------------------------------------------------------
+This chunk creates a dot plot comparing tests performed to positivity rate over
+the last 4 weeks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r testing_performance}
+
+
+tab_new_tests <- covid_testing %>% 
+             filter(date >= day_last28) %>% 
+             group_by(country) %>% 
+             summarise(total_tests = sum(new_tests, na.rm = TRUE))
+
+tab_new_cases <- covid_afro %>% 
+             filter(reporting_date >= day_last28) %>% 
+             count(country)
+
+tab_cases_tests <- tab_new_tests %>% 
+                   left_join(tab_new_cases, by = "country")
+
+tab_tests_final <- tab_cases_tests %>% 
+  left_join(Tab_pop, by = "country") %>% 
+  mutate(average_weekly_tests_capita = round(( (total_tests / 4) / 
+                                                 population) * 10000, 1), 
+         positivity_rate = round((n / total_tests) * 100, 1)) %>% 
+  filter(positivity_rate <= 100)
+
+
+## find highest point for y and x axis annotation 
+topy <- ceiling(
+  max(tab_tests_final$average_weekly_tests_capita, na.rm = TRUE)
+)
+
+topx <- ceiling(
+  max(tab_tests_final$positivity_rate, na.rm = TRUE)
+)
+
+ggplot(data = tab_tests_final, 
+       aes(x = positivity_rate, y = average_weekly_tests_capita, label = country)) + 
+  geom_point(col = "#E1A70E", size = 2) +
+  geom_text_repel(col = "blue", size = 6, 
+                  segment.alpha = 0.6, segment.size = 0.5) +
+  annotate("rect", 
+           xmin = 0, xmax = 5, 
+           ymin = 10, ymax = topy, 
+           alpha = 0.2) + 
+  annotate("text", 
+           size = 4,
+           x = 5, y = 20, 
+           label = "High test rate / low positivity rate countries") + 
+  annotate("rect", 
+           xmin = 10, xmax = topx, 
+           ymin = 0, ymax = 10, 
+           alpha = 0.2) + 
+  annotate("text", 
+           size = 4,
+           x = 20, y = 8, 
+           label = "Low test rate / high positivity rate countries") + 
+  ## make y and x axes meet at the origin (x = 0, y = 0) 
+  scale_y_continuous(expand = c(0,0), limits = c(0, NA)) + 
+  epi_theme + 
+  xlab("Positivity rate during the last 4 weeks") +
+  ylab("Average weekly nb of tests per 10,000 during the last 4 weeks ")
+```
+
+# Health Worker COVID-19 Cases Reported in the African Region 
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// hcw_cases \\\
+--------------------------------------------------------------------------------
+This chunk creates two side-by-side tables of the number of healthcare workers 
+with 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r hcw_cases}
+
+
+## get counts of healthcare workers
+Tab_hcw <- covid_afro %>% 
+          filter(healthcare_worker %in% c("Yes", "yes")) %>% 
+          count(country, name = "nb_hcw") 
+
+## get total number of cases 
+tab_cases3 <- covid_afro %>%
+              count(country, name = "nb_cases")
+
+## combine counts of cases and hcw             
+tab_cases_hcw <- tab_cases3 %>% 
+  left_join(Tab_hcw, by = "country") %>% 
+  ## replace missings accross all numerics to be 0
+  mutate(
+    across(everything(), ~replace_na(., 0)))
+
+# combine tables and create rate vars
+tab_hcw_final <- tab_cases_hcw %>% 
+   left_join(Tab_pop, by="country") %>% 
+   janitor::adorn_totals("row", fill = "-", na.rm = TRUE) %>% 
+   mutate(hcw_among_cases = round(( nb_hcw / nb_cases) * 100, 1)) %>% 
+   mutate(hcw_per_million = round(( nb_hcw / population) * 1000000, 1)) %>%
+   arrange(desc(nb_hcw)) %>% 
+   select("Country"            = country,
+          "Cumul cases"        = nb_cases, 
+          "Cumul HW"           = nb_hcw,
+          "% HW"               = hcw_among_cases, 
+          "HW per million pop" = hcw_per_million) 
+ 
+
+## make it in to a flextable as a raster for plotting in ggplot
+increasers <- flextable(
+  filter(tab_hcw_final, `Cumul HW` >= 300), 
+  # cwidth = c(1, 1.5, 1.5, 1)
+  ) %>% 
+  as_raster()
+
+## plot flextable as image 
+increasers_plot <- ggplot() + 
+  annotation_custom(grid::rasterGrob(increasers), 
+                    xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) + 
+  theme_void()
+
+## make it in to a flextable as a raster for plotting in ggplot
+decreasers <- flextable(
+  filter(tab_hcw_final, `Cumul HW`  < 300), 
+  # cwidth = c(1, 1.5, 1.5, 1)
+  ) %>% 
+  as_raster()
+
+## plot flextable as image 
+decreasers_plot <- ggplot() + 
+  annotation_custom(grid::rasterGrob(decreasers), 
+                    xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) + 
+  theme_void()
+
+## combine two plots next to each other
+increasers_plot + decreasers_plot      
+```
+
+# %HW Among COVID-19 Cases vs HW Infections per Million Population
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// hcw_plot \\\
+--------------------------------------------------------------------------------
+This chunk creates a dot plot comparing tests performed to positivity rate over
+the last 4 weeks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r}
+
+tab_hcw_final2 <- tab_cases_hcw %>% 
+  left_join(Tab_pop, by = "country") %>% 
+  mutate(perc_hcw_among_cases = round((nb_hcw / nb_cases) * 100, 1), 
+         cases_per_million = round((nb_hcw / population) * 1000000, 1))
+
+
+## remove country names if mortality rate is zero (so not overcrowding plot)
+tab_hcw_final2 <- tab_hcw_final2 %>% 
+  mutate(country = case_when(
+    cases_per_million == 0 & 
+      perc_hcw_among_cases < 3 ~ "", 
+    TRUE ~ country
+  ))
+
+
+
+## find highest point for y and x axis annotation 
+topy <- ceiling(
+  max(tab_hcw_final2$cases_per_million, na.rm = TRUE)
+)
+   
+ggplot(data = tab_hcw_final2, 
+                       aes(x = perc_hcw_among_cases, y = cases_per_million, label=country)) + 
+  geom_point(col = "#1B9E77", size = 2) +
+  geom_text_repel(col = "blue", size = 6, 
+                  segment.alpha = 0.6, segment.size = 0.5) +
+  annotate("rect", 
+           xmin = 0, xmax = 10, 
+           ymin = 200, ymax = topy, 
+           alpha = 0.2) + 
+  annotate("text", 
+           size = 4,
+           x = 10, y = 500, 
+           label = "Low % HW Covid cases / High number HW infections per million population") + 
+  ## make y and x axes meet at the origin (x = 0, y = 0) 
+  scale_y_continuous(expand = c(0,0), limits = c(0, NA)) + 
+  epi_theme + 
+  xlab("% health workers among onfirmed cases") +
+  ylab("Nb of health workers infections per million people")
+
+```
+
+# Summary
 
