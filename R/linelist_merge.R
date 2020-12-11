@@ -97,9 +97,12 @@ require(dplyr)
     #remove all accents from values in dataframe
     #replace all values in file that should be coded as missing
     #using gsub and regex pattern matching here as some patterns require to be fixed and others not
-    og_sheet<-og_sheet %>% mutate_all(stringi::stri_trans_general,"Latin-ASCII") %>%
-      mutate_all(gsub,pattern="['?]",replacement = "",ignore.case = T, perl = T) %>%
-      mutate_all(gsub, pattern="(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$", replacement=NA, perl = T)
+    og_sheet<-og_sheet %>% mutate_at(vars(-1),stringi::stri_trans_general,"Latin-ASCII") %>%
+      mutate_at(vars(-1),gsub,pattern="['?]",replacement = "",ignore.case = T, perl = T) %>%
+      mutate_at(vars(-1),gsub,pattern="\r\n",replacement = "",fixed=T) %>%
+      mutate_at(vars(-1),gsub,pattern="\\s+",replacement = " ",ignore.case = T) %>%
+      mutate_at(vars(-1),gsub,pattern ="\\s+$", replacement ="", ignore.case = T) %>%
+      mutate_at(vars(-1),gsub, pattern="(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$", replacement=NA, perl = T)
 #must keep this pattern all one line or doesnt work
 
     # filter variable cleaning dictionary specific to country file loaded
@@ -387,7 +390,7 @@ if(length(grep("patsympt",vars))==0){
 
 
     #keep variables of interest
-    output_sheet<- output_sheet %>% dplyr::select(report_date, patinfo_ageonset, patinfo_ageonsetunit,patinfo_ageonsetunitdays,
+    output_sheet<- output_sheet %>% dplyr::select(patinfo_id,report_date, patinfo_ageonset, patinfo_ageonsetunit,patinfo_ageonsetunitdays,
                                                   patinfo_sex, patinfo_resadmin1,
                                                   patinfo_resadmin2, report_classif,
                                                   pat_symptomatic, pat_asymptomatic,
