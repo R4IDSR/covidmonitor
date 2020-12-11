@@ -99,9 +99,8 @@ require(dplyr)
     #using gsub and regex pattern matching here as some patterns require to be fixed and others not
     og_sheet<-og_sheet %>% mutate_all(stringi::stri_trans_general,"Latin-ASCII") %>%
       mutate_all(gsub,pattern="['?]",replacement = "",ignore.case = T, perl = T) %>%
-      mutate_all(gsub, pattern="(?i)^NA$|(?i)^N/A$|(?i)^N/A,|
-                 (?i)^N\\A$|(?i)^Unknown$|(?i)know|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|
-                 (?i)^Inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$", replacement=NA, ignore.case= T, perl = T)
+      mutate_all(gsub, pattern="(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$", replacement=NA, perl = T)
+#must keep this pattern all one line or doesnt work
 
     # filter variable cleaning dictionary specific to country file loaded
     var_dict_country<- var_dict %>% filter(country==iso)
@@ -196,9 +195,6 @@ require(dplyr)
       mutate_at(vars(contains("Date", ignore.case = T)),as.Date, origin="1899-12-30") %>%
       mutate_at(vars(contains("Date", ignore.case = T)), as.character)
 
-
-    #datesnumeric$id<-rownames(datesnumeric) #ensure correct matching upon merge
-
       #handle dates that are characters. Select first 10 characters in cell This will select all full dates and not any times appended.
       # Convert character formats using parse date time.
       # Convert to numeric and change date format using origin of excel
@@ -207,7 +203,6 @@ require(dplyr)
         mutate_at(vars(contains("Date", ignore.case = T)), lubridate::parse_date_time, orders=c("ymd","Ymd","dmy","dmY","%Y-%m-%d","%y-%m-%d","%d-%m-%y","dBY","ymd HMS","Ymd HMS")) %>%
         mutate_at(vars(contains("Date", ignore.case = T)),as.Date, origin="1899-12-30") %>% mutate_at(vars(contains("Date", ignore.case = T)),as.character)
 
-      #datescharacter$id<-rownames(datescharacter) #ensure correct matching upon merge
 
        #Natural join of data frames, fills in missing values in one df with values from other if not misssing
 
@@ -412,9 +407,8 @@ if(length(grep("patsympt",vars))==0){
     output_fin<-output[!sapply(output,is.null)]
     big_data<-Reduce(function(...) merge(..., all=T), output_fin)
     big_data<-big_data[order(big_data$country_iso),]
-
     # write xlsx file to take on to ext step of cleaning
-    openxlsx::write.xlsx(big_data, here::here("inst",paste(outputname, Sys.Date())))
+    openxlsx::write.xlsx(big_data, here::here("inst",paste0(outputname, Sys.Date(),".xlsx")))
 
   }
 
