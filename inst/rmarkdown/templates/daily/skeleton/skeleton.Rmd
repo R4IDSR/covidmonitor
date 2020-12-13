@@ -1,36 +1,31 @@
 ---
 title: "COVID-19 Pandemic in the African Region"
-subtitle: "Epi situation update as of `r format(Sys.Date() - 1 , '%d %B %Y')`"
+subtitle: "Epi situation update as of `r format(Sys.Date(), '%d %B %Y')`"
 output: 
   powerpoint_presentation: 
     reference_doc: "C:/Program Files/R/R-4.0.2/library/covidmonitor/extdata/Afro_Template.pptx"
     keep_md: true
 ---
 
-
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// setup \\\
---------------------------------------------------------------------------------
-Several packages are required for different aspects of  analysis with *R*. 
-You will need to install these before starting. 
-These packages can be quite large and may take a while to download in the
-field. If you have access to a USB key with these packages, it makes sense to
-copy and paste the packages into your computer's R package library 
-(run the command .libPaths() to see the folder path). 
-For help installing packages, please visit https://r4epis.netlify.com/welcome
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r setup, include=FALSE, cache=F}
+
+# Several packages are required for different aspects of  analysis with *R*. 
+# You will need to install these before starting. 
+# These packages can be quite large and may take a while to download in the
+# field. If you have access to a USB key with these packages, it makes sense to
+# copy and paste the packages into your computer's R package library 
+# (run the command .libPaths() to see the folder path). 
+# For help installing packages, please visit https://r4epis.netlify.com/welcome
+
 
 # set options for rmarkdown 
 knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
                       message = FALSE, # hide all messages in output
                       warning = FALSE, # hide all warnings in output
                       collapse = TRUE, # combine all source/output to single block
-                      fig.align = 'left', # left align figures on page
                       fig.width = 20,  # define figure width
                       fig.height = 8,  # define figure height
-                      dpi = 300,       # define figure definitions 
+                      dpi = 300,       # define figure definitions
                       cache = F)       # run all code chunks (even if repeated)
 
 
@@ -80,28 +75,19 @@ epi_theme <- theme_classic() +
       # panel.grid.minor = element_line(colour = "grey90", size = 0.5), 
       panel.grid.major = element_line(colour = "grey90")
       )
-
-
-
 ```
 
 
-
-
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// define current week \\\
---------------------------------------------------------------------------------
- 
-This section is used to define your week of interest. It will be used later
-to filter your outputs. 
-You can also set the day which your epiweek starts on - the default for this
-is Monday. 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r define_current_week}
 
+# This section is used to define your week of interest. It will be used later
+# to filter your outputs. 
+# You can also set the day which your epiweek starts on - the default for this
+# is Monday. 
+
+
 ## current week
-this_week <- Sys.Date() - 1
+this_week <- Sys.Date()
 
 ## week number of current week
 No_week <- week(this_week)
@@ -111,15 +97,9 @@ expected_countries <- 47
 ```
 
 
-
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// import_data \\\
---------------------------------------------------------------------------------
-This chunk reads in all the data necessary as well as dictionaries. 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
-
 ```{r import_data}
+
+# This chunk reads in all the data necessary as well as dictionaries.
 
 ## define path to folder with raw data 
 # data_folder <- here::here("data", "raw")
@@ -183,13 +163,10 @@ covid_emro_0 <-  paste0(data_folder, "/WHO_COVID-19_global_table.csv") %>%
 ```
 
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// clean_data \\\
---------------------------------------------------------------------------------
-This chunk does basic data cleaning 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r clean_data}
+
+# This chunk does basic data cleaning 
+
 
 #### clean covid linelist 
 
@@ -254,14 +231,10 @@ covid_emro <- match_df(covid_emro_0, dictionary = cleaning_rules)
  
 # Cumulative Covid-19 Cases and Deaths on the African continent
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// cumul_case_death_continent \\\
---------------------------------------------------------------------------------
-This chunk creates a table of counts for the cumulative number of cases and 
-deaths on the continent
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r cumul_case_death_continent}
+
+## This chunk creates a table of counts for the cumulative number of cases and 
+## deaths on the continent
 
 ## get the number of cases and deaths from AFRO
 tab_afro_cases_deaths <- covid_afro %>% 
@@ -300,7 +273,7 @@ bind_rows(tab_afro_cases_deaths,tab_emro_cases_deaths) %>%
     "Cumul deaths" = deaths, 
     "CFR(%)"       = cfr, 
     "% cases"      = perc_cases, 
-    "% deaths"    = perc_deaths
+    "% deaths"     = perc_deaths
   ) %>% 
   ## create a flextable with cell width of 2 inches and heights of 1 inches each
   flextable(cwidth = 2, cheight = 1) %>% 
@@ -315,14 +288,10 @@ bind_rows(tab_afro_cases_deaths,tab_emro_cases_deaths) %>%
 
 # Cumulative Cases, Deaths and Recoveries Reported from 47 Countries
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// epicurve_counts_continent \\\
---------------------------------------------------------------------------------
-This chunk creates a table of counts for the cumulative number of cases and 
-deaths on the continent and overlays it on an epicurve with 7 day rolling average
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r epicurve_counts_continent} 
+
+## This chunk creates a table of counts for the cumulative number of cases and 
+## deaths on the continent and overlays it on an epicurve with 7 day rolling average
 
 ## get table with counts to overlay 
 tab_afro_cases_deaths2 <- covid_afro %>%
@@ -399,14 +368,10 @@ epi_group2 + inset_element(tab_afro_cases_deaths2_plot,
 
 # New Cases Reported Over the Past 7 Days
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// percentage_changes \\\
---------------------------------------------------------------------------------
-This chunk creates a table of counts for number of new cases in the past seven 
-days and percentage change from previous week by country
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r percentage_changes}
+
+## This chunk creates a table of counts for number of new cases in the past seven 
+## days and percentage change from previous week by country
 
 ## define the date of previous 7 and 14 days 
 day_last7 <- this_week - 7
@@ -465,14 +430,11 @@ increasers_plot + decreasers_plot
 
 # Daily Trends for the Top 10 Countries in the Past 28 Days
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// top_ten_trend \\\
---------------------------------------------------------------------------------
-This chunk creates faceted plots by country for 10 highest incidence in past 28 days
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
 ```{r top_ten_trend}
 
-#make own colour palettes
+## This chunk creates faceted plots by country for 10 highest incidence in past 28 days
+
+## make own colour palettes
 nb.cols <- 12
 mycolors <- colorRampPalette(brewer.pal(8, "Dark2"))(nb.cols)
 
@@ -569,13 +531,9 @@ ggplot(epitop10,
 
 # Cases per 100,000 Population: Weekly Trends in the African Region
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// weekly_attack_rate \\\
---------------------------------------------------------------------------------
-This chunk creates a plot for the overall weekly attack rate
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r weekly_attack_rate}
+
+## This chunk creates a plot for the overall weekly attack rate
 
 ## get counts by week 
 tab_cases_afro <- covid_afro %>% 
@@ -603,14 +561,10 @@ ggplot(tab_cases_afro, aes(x = epi_week, y = weekly_incidence_Afro)) +
 
 # Attack Rate in the Last 14 Days by Country 
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// two_week_attack_rate \\\
---------------------------------------------------------------------------------
-This chunk creates a plot for the attack rate in the last fourteen days by 
-country
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r two_week_attack_rate}
+
+## This chunk creates a plot for the attack rate in the last fourteen days by 
+## country
 
 ## get counts per country
 Tab_cases_last <- covid_afro %>% 
@@ -643,15 +597,10 @@ ggplot(tab_incidence_country,
 
 # Deaths per 100,000 Population Vs Cases per 100,000 in Past 14 Days
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// deaths_v_cases \\\
---------------------------------------------------------------------------------
-This chunk creates a dot plot comparing deaths to cases per 100k population and 
-highlighting low death/high incidence countries
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r deaths_v_cases}
 
+## This chunk creates a dot plot comparing deaths to cases per 100k population and 
+## highlighting low death/high incidence countries
 
 ## get counts of deaths 
 Tab_deaths_last14 <- covid_afro %>% 
@@ -708,15 +657,10 @@ ggplot(data = tab_death_cases_million2,
 
 # Testing Performance in the African Region - Last 4 Weeks
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// testing_performance \\\
---------------------------------------------------------------------------------
-This chunk creates a dot plot comparing tests performed to positivity rate over
-the last 4 weeks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r testing_performance}
 
+# This chunk creates a dot plot comparing tests performed to positivity rate over
+# the last 4 weeks
 
 tab_new_tests <- covid_testing %>% 
              filter(date >= day_last28) %>% 
@@ -777,15 +721,10 @@ ggplot(data = tab_tests_final,
 
 # Health Worker COVID-19 Cases Reported in the African Region 
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// hcw_cases \\\
---------------------------------------------------------------------------------
-This chunk creates two side-by-side tables of the number of healthcare workers 
-with 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
-
 ```{r hcw_cases}
 
+## This chunk creates two side-by-side tables of the number of healthcare workers 
+## with 
 
 ## get counts of healthcare workers
 Tab_hcw <- covid_afro %>% 
@@ -849,14 +788,10 @@ increasers_plot + decreasers_plot
 
 # %HW Among COVID-19 Cases vs HW Infections per Million Population
 
-<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// hcw_plot \\\
---------------------------------------------------------------------------------
-This chunk creates a dot plot comparing tests performed to positivity rate over
-the last 4 weeks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+```{r hcw_plot}
 
-```{r}
+## This chunk creates a dot plot comparing tests performed to positivity rate over
+## the last 4 weeks
 
 tab_hcw_final2 <- tab_cases_hcw %>% 
   left_join(Tab_pop, by = "country") %>% 
