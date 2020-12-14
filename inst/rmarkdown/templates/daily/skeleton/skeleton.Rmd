@@ -644,7 +644,7 @@ ggplot(data = tab_death_cases_million2,
            alpha = 0.2) + 
   annotate("text", 
            size = 4,
-           x = 0.6, y = 50, 
+           x = 0.6, y = topy - 10, 
            label = "High incidence / low mortality countries") + 
   ## make y and x axes meet at the origin (x = 0, y = 0) 
   scale_y_continuous(expand = c(0,0), limits = c(0, NA)) + 
@@ -701,7 +701,7 @@ ggplot(data = tab_tests_final,
            alpha = 0.2) + 
   annotate("text", 
            size = 4,
-           x = 5, y = 20, 
+           x = 5, y = topy - 5, 
            label = "High test rate / low positivity rate countries") + 
   annotate("rect", 
            xmin = 10, xmax = topx, 
@@ -824,7 +824,7 @@ ggplot(data = tab_hcw_final2,
            alpha = 0.2) + 
   annotate("text", 
            size = 4,
-           x = 10, y = 500, 
+           x = 10, y = topy - 100, 
            label = "Low % HW Covid cases / High number HW infections per million population") + 
   ## make y and x axes meet at the origin (x = 0, y = 0) 
   scale_y_continuous(expand = c(0,0), limits = c(0, NA)) + 
