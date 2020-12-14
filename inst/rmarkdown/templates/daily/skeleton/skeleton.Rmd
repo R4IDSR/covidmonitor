@@ -102,8 +102,7 @@ expected_countries <- 47
 # This chunk reads in all the data necessary as well as dictionaries.
 
 ## define path to folder with raw data 
-# data_folder <- here::here("data", "raw")
-data_folder <- "C:\\Users\\Spina\\Downloads\\Daily_updates\\data\\raw"
+data_folder <- here::here("data", "raw")
 
 ## import linelist of confirmed cases 
 covid_afro_00 <- 
