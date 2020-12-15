@@ -46,7 +46,9 @@ required_packages <- c(
                        "flextable",      # for nice tables
                        "grid",           # add flextables to ggplots 
                        "patchwork",      # combine ggplots 
-                       "RColorBrewer"    # for defining colour schemes
+                       "RColorBrewer",   # for defining colour schemes
+                       "purrr",          # for running regressions over multiple countries 
+                       "broom"           # for cleaning up regression outputs
                        )
   
 for (pkg in required_packages) {
@@ -86,8 +88,8 @@ epi_theme <- theme_classic() +
 # is Monday. 
 
 
-## current week
-this_week <- Sys.Date()
+## define the current date of interest
+this_week <- as.Date("2020-12-09")
 
 ## week number of current week
 No_week <- week(this_week)
@@ -102,7 +104,8 @@ expected_countries <- 47
 # This chunk reads in all the data necessary as well as dictionaries.
 
 ## define path to folder with raw data 
-data_folder <- here::here("data", "raw")
+# data_folder <- here::here("data", "raw")
+data_folder <- "C:/Users/Spina/Downloads/Daily_updates/data/raw"
 
 ## import linelist of confirmed cases 
 covid_afro_00 <- 
@@ -112,7 +115,9 @@ covid_afro_00 <-
   clean_names() 
 
 ## import data dictionary 
-cleaning_rules <- rio::import(here::here("data","cleaned","cleaning_rules_s.xlsx"))
+# cleaning_rules <- rio::import(here::here("data","cleaned","cleaning_rules_s.xlsx"))
+cleaning_rules <- rio::import("C:/Users/Spina/Downloads/Daily_updates/data/cleaned/cleaning_rules_s.xlsx")
+
 
 ## import population data 
 Tab_pop <- paste0(data_folder, "/Tab_population.xlsx") %>% 
@@ -365,29 +370,110 @@ epi_group2 + inset_element(tab_afro_cases_deaths2_plot,
 
 ```
 
-# New Cases Reported Over the Past 7 Days
+# Top 10 Countries in New Cases and Deaths Reported in the Past 28 Days
 
-```{r percentage_changes}
+```{r top10_case_death}
+## This chunk creates to plots with the top ten countries in new cases and new 
+## deaths 
 
+day_last28 <- this_week - 28
+
+tab_cum_cases_country_og <- covid_afro %>% 
+                 filter(reporting_date >= day_last28) %>% 
+                 count(country) %>% 
+                 group_by(country) %>% 
+                 summarise(total_cases = sum(n))
+
+tab_cum_cases_country <- tab_cum_cases_country_og %>% 
+                 top_n(10,total_cases)
+                 
+                 
+                 
+plot1 <- ggplot(tab_cum_cases_country,
+                aes(x = reorder(country, -total_cases ), y = total_cases))+
+  geom_col(fill="#4f3222") +
+  epi_theme + 
+  labs(x = "Country",
+       y = "Number of COVID-19 cases")
+
+tab_cum_deaths_country <- covid_afro %>% 
+                 filter(reporting_date >= day_last28) %>% 
+                 filter(outcome == "Dead") %>% 
+                 count(country) %>% 
+                 group_by(country) %>% 
+                 summarise(total_deaths=sum(n)) %>% 
+                 top_n(10,total_deaths)
+
+
+plot2 <- ggplot(tab_cum_deaths_country, aes(x = reorder(country, -total_deaths), y = total_deaths))+
+  geom_col(fill="#d64161") +
+  epi_theme + 
+  labs(x = "Country",
+    y = "Number of COVID-19 deaths")
+
+plot1 / plot2
+
+```
+
+# New Cases Reported Over the past 7 Days: All 47 Countries 
+
+```{r percentage_changes_overall, fig.align = 'center'}
 ## This chunk creates a table of counts for number of new cases in the past seven 
-## days and percentage change from previous week by country
+## days and percentage change from previous for all of AFRO
 
 ## define the date of previous 7 and 14 days 
 day_last7 <- this_week - 7
 day_last14 <- this_week - 14
 
-## define which period cases occured in 
+## define which period cases occurred in 
 covid_afro <- mutate(covid_afro, 
                      period = case_when(
                        reporting_date >= day_last7    ~ "last7days", 
                        reporting_date < day_last7 & 
                          reporting_date >= day_last14 ~ "previous_7days", 
-                       TRUE ~ "Before_last14"
-                     ))
+                       TRUE ~ "Before_last14"), 
+                     period = factor(period, 
+                                        levels = c("last7days", 
+                                                   "previous_7days", 
+                                                   "Before_last14")))
+
+overall_new_cases <- covid_afro %>% 
+  count(period)  %>% 
+  ## ensure that all factor levels are represented (fill with zero)
+  complete(period, fill = list(n = 0)) %>% 
+  pivot_wider(names_from = period, 
+              values_from = n, 
+              values_fill = 0) %>% 
+  mutate(perc_change = round(((last7days - previous_7days) / previous_7days) * 100, 1)) %>% 
+  select("New cases in last 7 days" = last7days, 
+         "New cases in previous 7 days" = previous_7days, 
+         "% change" = perc_change) %>% 
+  pivot_longer(cols = everything(), 
+               names_to = "Period", 
+               values_to = "Value")
+
+overall_new_cases %>% 
+  flextable(cwidth = c(5, 2)) %>% 
+  ## make all the text size 18 
+  fontsize(size = 18, part = "all")
+
+```
+
+
+
+# New Cases Reported Over the Past 7 Days: Increasing Countries
+
+```{r percentage_changes_incr}
+
+## This chunk creates a table of counts for number of new cases in the past seven 
+## days and percentage change from previous week by country
+
 
 ## create table of cases by country counting new cases in last 7 days
 tab_increase_cases <- covid_afro %>% 
   count(country, period) %>% 
+  ## ensure that all factor levels are represented (fill with zero)
+  complete(country, period, fill = list(n = 0)) %>% 
   pivot_wider(names_from = period, 
               values_from = n, 
               values_fill = 0) %>% 
@@ -398,33 +484,37 @@ tab_increase_cases <- covid_afro %>%
          "New cases in previous 7 days" = previous_7days, 
          "% change" = perc_change)
 
-## make it in to a flextable as a raster for plotting in ggplot
+## make it in to a flextable showing increasers
 increasers <- flextable(
   filter(tab_increase_cases, `% change` > 0), 
   cwidth = c(1, 1.5, 1.5, 1)) %>% 
-  as_raster()
+  ## make all the text size 18 
+  fontsize(size = 18, part = "all") %>% 
+  as_raster() 
 
-## plot flextable as image 
-increasers_plot <- ggplot() + 
+## plot increasers 
+ggplot() + 
   annotation_custom(grid::rasterGrob(increasers), 
                     xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) + 
   theme_void()
+```
 
-## make it in to a flextable as a raster for plotting in ggplot
+# New Cases Reported Over the Past 7 Days: Decreasing Countries
+
+```{r percentage_changes_decr}
+## make it in to a flextable showing decreasers
 decreasers <- flextable(
   filter(tab_increase_cases, `% change` <= 0), 
   cwidth = c(1, 1.5, 1.5, 1)) %>% 
-  as_raster()
+  ## make all the text size 18 
+  fontsize(size = 18, part = "all") %>% 
+  as_raster() 
 
-## plot flextable as image 
-decreasers_plot <- ggplot() + 
+## plot decreasers 
+ggplot() + 
   annotation_custom(grid::rasterGrob(decreasers), 
                     xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) + 
   theme_void()
-
-## combine two plots next to each other
-increasers_plot + decreasers_plot
-
 ```
 
 # Daily Trends for the Top 10 Countries in the Past 28 Days
@@ -718,9 +808,9 @@ ggplot(data = tab_tests_final,
   ylab("Average weekly nb of tests per 10,000 during the last 4 weeks ")
 ```
 
-# Health Worker COVID-19 Cases Reported in the African Region 
+# Health Worker COVID-19 Cases Reported in the African Region: Part 1
 
-```{r hcw_cases}
+```{r hcw_cases_incr}
 
 ## This chunk creates two side-by-side tables of the number of healthcare workers 
 ## with 
@@ -758,32 +848,38 @@ tab_hcw_final <- tab_cases_hcw %>%
 ## make it in to a flextable as a raster for plotting in ggplot
 increasers <- flextable(
   filter(tab_hcw_final, `Cumul HW` >= 300), 
-  # cwidth = c(1, 1.5, 1.5, 1)
-  ) %>% 
-  as_raster()
+  cwidth = c(1, 2, 2, 2, 2)) %>% 
+  ## make all the text size 18 
+  fontsize(size = 18, part = "all") %>% 
+  as_raster() 
 
-## plot flextable as image 
-increasers_plot <- ggplot() + 
+## plot increasers 
+ggplot() + 
   annotation_custom(grid::rasterGrob(increasers), 
                     xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) + 
   theme_void()
 
+```
+
+# Health Worker COVID-19 Cases Reported in the African Region: Part 2
+
+
+```{r hcw_cases_decr}
 ## make it in to a flextable as a raster for plotting in ggplot
 decreasers <- flextable(
   filter(tab_hcw_final, `Cumul HW`  < 300), 
-  # cwidth = c(1, 1.5, 1.5, 1)
-  ) %>% 
-  as_raster()
+  cwidth = c(1, 2, 2, 2, 2)) %>% 
+  ## make all the text size 18 
+  fontsize(size = 18, part = "all") %>% 
+  as_raster() 
 
-## plot flextable as image 
-decreasers_plot <- ggplot() + 
+## plot increasers 
+ggplot() + 
   annotation_custom(grid::rasterGrob(decreasers), 
                     xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf) + 
   theme_void()
-
-## combine two plots next to each other
-increasers_plot + decreasers_plot      
 ```
+
 
 # %HW Among COVID-19 Cases vs HW Infections per Million Population
 
@@ -835,4 +931,72 @@ ggplot(data = tab_hcw_final2,
 ```
 
 # Summary
+
+```{r summary_slide}
+
+## this chunk produces the numbers required for producing the bullet points 
+## on the summary slide
+
+
+## week on week increases 
+trough <- tab_cases_afro %>% 
+  mutate(increasing = weekly_incidence_Afro >= lag(weekly_incidence_Afro),
+         change_point = increasing - lag(increasing)) %>% 
+  filter(change_point == 1) %>% 
+  tail()
+
+increasing_weeks <- week(this_week) - week(trough$epi_week)  
+
+change_count <- overall_new_cases[3, 2] %>% 
+  pull()
+
+## three highest countries and their percentage 28 days
+top3 <- tab_cum_cases_country_og %>% 
+  arrange(desc(total_cases)) %>% 
+  slice(1:3)
+
+top3countries <- paste0(top3$country, collapse = ", ")
+
+top3countries_perc <- round(
+  sum(top3$total_cases) / sum(tab_cum_cases_country_og$total_cases) * 100, 1)
+
+
+## increase over 20% in the last seven days 
+increasers <- tab_increase_cases %>% 
+  filter(`% change` >= 20)
+
+increasing_trend <- covid_afro %>% 
+  filter(country %in% increasers$Country) %>% 
+  count(country, reporting_date) %>% 
+  group_by(country) %>% 
+  mutate(increasing = n >= lag(n),
+         change_point = increasing - lag(increasing)) %>% 
+  slice_tail(n = 4) %>% 
+  nest() %>% 
+  mutate(model = purrr::map(data, 
+                            ~lm(n ~ reporting_date, data = .))) %>% 
+  mutate(estimate = purrr::map(model, broom::tidy)) %>% 
+  unnest(estimate) %>% 
+  filter(term == "reporting_date" & estimate > 0)
+  
+increasing_trend_countries <- paste0(increasing_trend$country, collapse = ", ")
+  
+
+
+## low tests per 10,000 
+low_test_rate <- tab_tests_final %>% 
+  filter(average_weekly_tests_capita < 10)
+
+countries_under_five <- paste0(low_test_rate$country[low_test_rate$positivity_rate < 5], collapse = ", ")
+
+countries_above_ten <- paste0(low_test_rate$country[low_test_rate$positivity_rate > 10], collapse = ", ")
+
+```
+
+- Steady increase continue to be seen in the African region for `r increasing_weeks` consecutive weeks 
+– New reports of cases in the region changed by `r change_count`% in the past 7 days.
+- `r top3countries` reported the highest number of cases in the past 28 days, accounting for `r top3countries_perc`% of new reports.
+- New reports in the last 7 days increased by 20% or above in `r nrow(increasers)` countries including `r nrow(increasing_trend)` with upward linear trend over the last 4 weeks (`r increasing_trend_countries`). These `r nrow(increasing_trend)` countries should be considered as priority for cross-pillar support. 
+- Low tests per 10,000 in the past 4 weeks in `r nrow(low_test_rate)` countries with data available including `r filter(low_test_rate, positivity_rate < 5) %>% nrow()` with positivity rate below 5% (`r countries_under_five`) and `r filter(low_test_rate, positivity_rate > 10) %>% nrow()` with positivity rate above 10% (`r countries_above_ten`).
+
 
