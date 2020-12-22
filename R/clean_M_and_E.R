@@ -141,7 +141,7 @@ clean_kpi <- function(inputfile) {
       ## use lubridate to change all of the diff posibilities to POSIXcT date
       inputfile[[j]] <- suppressWarnings(
         lubridate::parse_date_time(inputfile[[j]],
-                                   orders=c("ymd","Ymd","dmy","dmY",
+                                   orders = c("ymd","Ymd","dmy","dmY",
                                            "%Y%m%d","%y%m%d","%d%m%y",
                                            "%Y-%m-%d","%y-%m-%d","%d-%m-%y",
                                            "%Y.%m.%d","%y.%m.%d","%d.%m.%y",
