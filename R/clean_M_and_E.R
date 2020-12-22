@@ -101,6 +101,9 @@ clean_kpi <- function(inputfile) {
       ## store original variable for comparing drops later
       og_var <- inputfile[[j]]
 
+      ## make in to a character variable
+      inputfile[[j]] <- as.character(inputfile[[j]])
+
       ## remove accented characters
       inputfile[[j]] <- iconv(inputfile[[j]],
                                to = 'ASCII//TRANSLIT')
