@@ -53,10 +53,115 @@ clean_kpi <- function(inputfile) {
     inputfile <- dplyr::mutate(inputfile,
                                dplyr::across(dplyr::all_of(NUMVARS), as.numeric))
 
-    ## TODO: fix date variables (such a mess that not even guess_dates does anything with them)
-    # inputfile <- dplyr::mutate(inputfile,
-    #                            dplyr::across(dplyr::all_of(DATEVARS), linelist::guess_dates))
+    ## TODO: make date fixing in to a separate function
+    ## date fixing plan:
+    ## if char month, remove accents translate to english
+    ## nb. (if contains date and year will be kept, else NA)
+    ## if length of 5 and starts with a 4 -> as.date excel origin
+    ## if in normal date format then just leave
+    ## use lubridate to catch all date formats
 
+    ## translate month names
+    month_translaters <- data.frame(en = month.name,
+                                    fr = c(
+                                      "janvier",
+                                      "fevrier",
+                                      "mars",
+                                      "avril",
+                                      "mai",
+                                      "juin",
+                                      "juillet",
+                                      "aout",
+                                      "septembre",
+                                      "octobre",
+                                      "novembre",
+                                      "decembre"),
+                                    pt = c(
+                                      "janeiro",
+                                      "fevereiro",
+                                      "março",
+                                      "abril",
+                                      "maio",
+                                      "junho",
+                                      "julho",
+                                      "agosto",
+                                      "setembro",
+                                      "outubro",
+                                      "novembro",
+                                      "dezembro"
+                                      ))
+
+
+
+
+
+    ## for each date variable
+    for (j in DATEVARS) {
+
+      ## store original variable for comparing drops later
+      og_var <- inputfile[[j]]
+
+      ## remove accented characters
+      inputfile[[j]] <- iconv(inputfile[[j]],
+                               to = 'ASCII//TRANSLIT')
+
+
+      ## for each of the months
+      for (i in 1:nrow(month_translaters)) {
+        ## replace the spelling
+        inputfile[[j]] <- gsub(paste0(month_translaters$fr[1],
+                                      "|",
+                                      month_translaters$pt[1]),
+                               month_translaters$en[i],
+                               inputfile[[j]],
+                               ignore.case = TRUE,
+                               perl = TRUE)
+      }
+
+      ## find excel date rows
+      exceldaterows <- nchar(inputfile[[j]]) == 5 &
+        substr(inputfile[[j]], 1, 1) == "4" &
+        !is.na(inputfile[[j]])
+
+      ## get a vector of the values to be changed to dates - as numeric
+      exceldatenumerics <- suppressWarnings(
+        as.numeric(
+        inputfile[[j]][exceldaterows]
+        )
+      )
+
+      ## change excel compatibles to dates
+      exceldatedates <- as.Date(
+        exceldatenumerics,
+        origin = "1899-12-30")
+
+      ## put back in as character
+      inputfile[exceldaterows, j] <- as.character(exceldatedates)
+
+      ## use lubridate to change all of the diff posibilities to POSIXcT date
+      inputfile[[j]] <- suppressWarnings(
+        lubridate::parse_date_time(inputfile[[j]],
+                                   orders=c("ymd","Ymd","dmy","dmY",
+                                           "%Y%m%d","%y%m%d","%d%m%y",
+                                           "%Y-%m-%d","%y-%m-%d","%d-%m-%y",
+                                           "%Y.%m.%d","%y.%m.%d","%d.%m.%y",
+                                           "%Y/%m/%d","%y/%m/%d","%d/%m/%y",
+                                           "dBY","ymd HMS","Ymd HMS"))
+      )
+
+      ## change back to normal date format because POSIXcT annoying downstream
+      inputfile[[j]] <- as.Date(inputfile[[j]])
+
+      ## count how many were dropped
+      num_dropped <- sum(is.na(inputfile[[j]]) - is.na(og_var))
+
+      ## give warning on number of obs dropped
+      if (num_dropped > 0) {
+        warning(
+          paste0(num_dropped, " date entries dropped from ", j)
+        )
+      }
+    }
 
     ## fix yes/no and yes/no/partially variables
     inputfile <- dplyr::mutate(inputfile,
