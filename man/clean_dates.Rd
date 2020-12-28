@@ -4,12 +4,10 @@
 \alias{clean_dates}
 \title{Clean messy date variables}
 \usage{
-clean_dates(inputfile, datevars, quietly = FALSE)
+clean_dates(x, quietly = FALSE)
 }
 \arguments{
-\item{inputfile}{a data frame}
-
-\item{datevars}{a vector of names for date variables to be cleaned}
+\item{x}{a vector of dates to be cleaned}
 
 \item{quietly}{a TRUE/FALSE of whether to show warnings for dropped observations
 (default is FALSE, so warnings are shown)}

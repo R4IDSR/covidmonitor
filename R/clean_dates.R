@@ -1,8 +1,6 @@
 #' Clean messy date variables
 #'
-#' @param inputfile a data frame
-#'
-#' @param datevars a vector of names for date variables to be cleaned
+#' @param x a vector of dates to be cleaned
 #'
 #' @param quietly a TRUE/FALSE of whether to show warnings for dropped observations
 #' (default is FALSE, so warnings are shown)
@@ -31,8 +29,7 @@
 #' @export
 
 
-clean_dates <- function(inputfile,
-                        datevars,
+clean_dates <- function(x,
                         quietly = FALSE) {
 
 
@@ -68,82 +65,74 @@ clean_dates <- function(inputfile,
                                   ))
 
 
+  ## store original variable for comparing drops later
+  og_var <- x
 
+  ## make in to a character variable
+  x <- as.character(x)
 
+  ## remove accented characters
+  x <- iconv(x,
+             to = 'ASCII//TRANSLIT')
 
-  ## for each date variable
-  for (j in DATEVARS) {
-
-    ## store original variable for comparing drops later
-    og_var <- inputfile[[j]]
-
-    ## make in to a character variable
-    inputfile[[j]] <- as.character(inputfile[[j]])
-
-    ## remove accented characters
-    inputfile[[j]] <- iconv(inputfile[[j]],
-                            to = 'ASCII//TRANSLIT')
-
-
-    ## for each of the months
-    for (i in 1:nrow(month_translaters)) {
-      ## replace the spelling
-      inputfile[[j]] <- gsub(paste0(month_translaters$fr[1],
-                                    "|",
-                                    month_translaters$pt[1]),
-                             month_translaters$en[i],
-                             inputfile[[j]],
-                             ignore.case = TRUE,
-                             perl = TRUE)
-    }
-
-    ## find excel date rows
-    exceldaterows <- nchar(inputfile[[j]]) == 5 &
-      substr(inputfile[[j]], 1, 1) == "4" &
-      !is.na(inputfile[[j]])
-
-    ## get a vector of the values to be changed to dates - as numeric
-    exceldatenumerics <- suppressWarnings(
-      as.numeric(
-        inputfile[[j]][exceldaterows]
-      )
-    )
-
-    ## change excel compatibles to dates
-    exceldatedates <- as.Date(
-      exceldatenumerics,
-      origin = "1899-12-30")
-
-    ## put back in as character
-    inputfile[exceldaterows, j] <- as.character(exceldatedates)
-
-    ## use lubridate to change all of the diff posibilities to POSIXcT date
-    inputfile[[j]] <- suppressWarnings(
-      lubridate::parse_date_time(inputfile[[j]],
-                                 orders = c("ymd","Ymd","dmy","dmY",
-                                            "%Y%m%d","%y%m%d","%d%m%y",
-                                            "%Y-%m-%d","%y-%m-%d","%d-%m-%y",
-                                            "%Y.%m.%d","%y.%m.%d","%d.%m.%y",
-                                            "%Y/%m/%d","%y/%m/%d","%d/%m/%y",
-                                            "dBY","ymd HMS","Ymd HMS"))
-    )
-
-    ## change back to normal date format because POSIXcT annoying downstream
-    inputfile[[j]] <- as.Date(inputfile[[j]])
-
-    ## count how many were dropped
-    num_dropped <- sum(is.na(inputfile[[j]]) - is.na(og_var))
-
-    ## give warning on number of obs dropped
-    if (num_dropped > 0 & !quietly) {
-      warning(
-        paste0(num_dropped, " date entries dropped from ", j)
-      )
-    }
+  ## for each of the months
+  for (i in 1:nrow(month_translaters)) {
+    ## replace the spelling
+    x <- gsub(paste0(month_translaters$fr[i],
+                                  "|",
+                                  month_translaters$pt[i]),
+                           month_translaters$en[i],
+                           x,
+                           ignore.case = TRUE,
+                           perl = TRUE)
   }
 
 
+
+  ## find excel date rows
+  exceldaterows <- nchar(x) == 5 &
+    substr(x, 1, 1) == "4" &
+    !is.na(x)
+
+  ## get a vector of the values to be changed to dates - as numeric
+  exceldatenumerics <- suppressWarnings(
+    as.numeric(
+      x[exceldaterows]
+    )
+  )
+
+  ## change excel compatibles to dates
+  exceldatedates <- as.Date(
+    exceldatenumerics,
+    origin = "1899-12-30")
+
+  ## put excel dates back in as character
+  x[exceldaterows] <- as.character(exceldatedates)
+
+  ## use lubridate to change all of the diff posibilities to POSIXcT date
+  x <- suppressWarnings(
+    lubridate::parse_date_time(x,
+                               orders = c("ymd","Ymd","dmy","dmY",
+                                          "%Y%m%d","%y%m%d","%d%m%y",
+                                          "%Y-%m-%d","%y-%m-%d","%d-%m-%y",
+                                          "%Y.%m.%d","%y.%m.%d","%d.%m.%y",
+                                          "%Y/%m/%d","%y/%m/%d","%d/%m/%y",
+                                          "dBY","ymd HMS","Ymd HMS"))
+  )
+
+  ## change back to normal date format because POSIXcT annoying downstream
+  x <- as.Date(x)
+
+  ## count how many were dropped
+  num_dropped <- sum(is.na(x) - is.na(og_var))
+
+  ## give warning on number of obs dropped
+  if (num_dropped > 0 & !quietly) {
+    warning(
+      paste0(num_dropped, " date entries not usable")
+    )
+  }
+
+  ## return dataset
+  x
 }
-
-
-

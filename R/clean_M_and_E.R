@@ -53,7 +53,11 @@ clean_kpi <- function(inputfile) {
     inputfile <- dplyr::mutate(inputfile,
                                dplyr::across(dplyr::all_of(NUMVARS), as.numeric))
 
-## TODO: add in line using new date cleaning function
+    ## fix date variables
+    inputfile <- dplyr::mutate(inputfile,
+                               dplyr::across(dplyr::all_of(DATEVARS), clean_dates_single))
+
+    inputfile <- clean_dates(inputfile, DATEVARS)
 
     ## fix yes/no and yes/no/partially variables
     inputfile <- dplyr::mutate(inputfile,
