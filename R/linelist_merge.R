@@ -19,7 +19,7 @@
 #' @author Alice Carr, Alex Spina
 #' @export
 
-library(dplyr) #still have this here because across not support in standard dplyr
+library(dplyr) #still have this here because across not supported in standard dplyr ?
 
 # the inputs thati have been using
 # inputdirectory <- "inst/extdata/frank_linelists/"
@@ -116,6 +116,25 @@ merge_linelist <- function(inputdirectory,
     og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "\\s+$", replacement = "", ignore.case = T))
     og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$", replacement = NA, perl = T))
     # must keep this pattern all one line or doesnt work
+
+    names(og_sheet) <- gsub(x= names(og_sheet),pattern ="\r\n",replacement = "", fixed = T)
+    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+", replacement =" ")
+    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+$", replacement ="")
+    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+|[[:punct:]]", replacement ="_")
+    names(og_sheet) <-tolower(names(og_sheet))
+    names(og_sheet)<- stringi::stri_trans_general(names(og_sheet) , "Latin-ASCII")
+
+    #remove all accents from values in dataframe
+    #replace all values in file that should be coded as missing
+    #using gsub and regex pattern matching here as some patterns require to be fixed and others not
+    og_sheet<-og_sheet %>% mutate_at(vars(-1),stringi::stri_trans_general,"Latin-ASCII") %>%
+      mutate_at(vars(-1),gsub,pattern="['?]",replacement = "",ignore.case = T, perl = T) %>%
+      mutate_at(vars(-1),gsub,pattern="\r\n",replacement = "",fixed=T) %>%
+      mutate_at(vars(-1),gsub,pattern="\\s+",replacement = " ",ignore.case = T) %>%
+      mutate_at(vars(-1),gsub,pattern ="\\s+$", replacement ="", ignore.case = T) %>%
+      mutate_at(vars(-1),gsub, pattern="(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$", replacement=NA, perl = T)
+#must keep this pattern all one line or doesnt work
+
 
     # filter variable cleaning dictionary specific to country file loaded
     var_dict_country <- dplyr::filter(var_dict, country == iso)
@@ -277,6 +296,7 @@ merge_linelist <- function(inputdirectory,
       warning("All variables of interest present")
     }
 
+
     # make column for ISO code
     output_sheet$country_iso <- iso
     #change all date columns
@@ -300,7 +320,25 @@ merge_linelist <- function(inputdirectory,
 
     # add cleaned output sheet to a list
     output[[f]] <- output_sheet
+
+    #keep variables of interest
+    output_sheet<- output_sheet %>% dplyr::select(patinfo_id,report_date, patinfo_ageonset, patinfo_ageonsetunit,patinfo_ageonsetunitdays,
+                                                  patinfo_sex, patinfo_resadmin1,
+                                                  patinfo_resadmin2, report_classif,
+                                                  pat_symptomatic, pat_asymptomatic,
+                                                  comcond_preexist1, comcond_preexist,
+                                                  patinfo_occus, expo_travel, expo_travel_country,
+                                                  expo_contact_case, lab_result,
+                                                  lab_datetaken, lab_resdate,
+                                                  patcourse_status,
+                                                  patcourse_datedeath, patcourse_datedischarge, country_iso, contains("patsympt"), patcurrent_status)
+
+
+
+    #add cleaned output sheet to a list
+    output[[f]] <-output_sheet
   }
+
   # merge all cleaned sheets into one
   output_fin <- output[!sapply(output, is.null)]
   big_data <- Reduce(function(...) merge(..., all = T), output_fin)
