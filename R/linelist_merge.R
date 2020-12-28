@@ -19,13 +19,13 @@
 #' @author Alice Carr, Alex Spina
 #' @export
 
-library(dplyr) #still have this here because across not support in standard dplyr
+library(dplyr) #still have this here because across not supported in standard dplyr ?
 
-# the inputs thati have been using
-# inputdirectory <- "inst/extdata/frank_linelists/"
-# outputdirectory <- "inst/"
-# outputname <- "Merged_linelist_"
-# isotomerge <- "AFRO"
+# the inputs that i have been using
+inputdirectory <- "inst/extdata/frank_linelists/"
+outputdirectory <- "inst/"
+outputname <- "Merged_linelist_"
+isotomerge <- "AFRO"
 
 merge_linelist <- function(inputdirectory,
                            outputdirectory = tempdir(),
@@ -114,8 +114,15 @@ merge_linelist <- function(inputdirectory,
     og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "\r\n", replacement = "", fixed = T))
     og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "\\s+", replacement = " ", ignore.case = T))
     og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "\\s+$", replacement = "", ignore.case = T))
-    og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$", replacement = NA, perl = T))
+    og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$|(?i)^Unk$|(?i)^NP$", replacement = NA, perl = T))
     # must keep this pattern all one line or doesnt work
+
+    names(og_sheet) <- gsub(x= names(og_sheet),pattern ="\r\n",replacement = "", fixed = T)
+    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+", replacement =" ")
+    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+$", replacement ="")
+    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+|[[:punct:]]", replacement ="_")
+    names(og_sheet) <-tolower(names(og_sheet))
+    names(og_sheet)<- stringi::stri_trans_general(names(og_sheet) , "Latin-ASCII")
 
     # filter variable cleaning dictionary specific to country file loaded
     var_dict_country <- dplyr::filter(var_dict, country == iso)
@@ -147,7 +154,6 @@ merge_linelist <- function(inputdirectory,
         warning(paste("Recoding variables:", paste(recode_vars, collapse = ","), "\n \n Recoding to:", paste(what_to_match, collapse = ",")))
 
         recode_sheet <- og_sheet[, which(names(og_sheet) %in% recode_vars)]
-
         # remove following instances from variable names that need recoding for the next step to leave what will become the recoded value
         names(recode_sheet) <- gsub(x = names(recode_sheet), pattern = "COVID.|Co19.|comcond.|patsympt.|patinfo.", replacement = "", ignore.case = T)
 
@@ -162,12 +168,13 @@ merge_linelist <- function(inputdirectory,
 
         # where all instances were 1 (yes) recode to the name of the variable for merge
         recode_sheet <- data.frame(sapply(names(recode_sheet), function(x) ifelse(recode_sheet[, x] == 1, x, recode_sheet[, x])), stringsAsFactors = F)
+        colnames(recode_sheet) <- gsub("^X", "",  colnames(recode_sheet))
         # renames variables with key of what to code to
-        names(recode_sheet) <- paste(names(recode_sheet), variable_to, sep = ".")
+        recode_sheet<-setnames(recode_sheet,old=c(recode_vars),new=c(paste(recode_vars, variable_to, sep = ".")))
 
         # concatenate all common variables using split method, method now not dependant on data.table
-        recode_sheet[what_to_match] <-
-          suppressWarnings(lapply(base::split.default(recode_sheet, what_to_match), function(x) do.call(paste, c(x, sep = ","))))
+        recode_sheet[names(base::split.default(recode_sheet, sub(".*\\.", "", names(recode_sheet))))] <-
+          suppressWarnings(lapply(base::split.default(recode_sheet, sub(".*\\.", "", names(recode_sheet))), function(x) do.call(paste, c(x, sep = ","))))
 
         # remove the _ which was a place holder for a space in variable name
         recode_sheet <- data.frame(lapply(recode_sheet, function(x) {
@@ -185,6 +192,7 @@ merge_linelist <- function(inputdirectory,
         recode_sheet[recode_sheet == ""] <- NA
         # select newly recoded columns
         recode_sheet$id <- rownames(recode_sheet) # create an id variable for when merging back to og sheet occurs
+        colnames(recode_sheet) <- gsub("^X", "",  colnames(recode_sheet))
         recode_sheet <- recode_sheet[, which(names(recode_sheet) %in% c(what_to_match, "id"))]
 
         # remove the columns that required recoding from original sheet
@@ -195,7 +203,7 @@ merge_linelist <- function(inputdirectory,
         # cbind with newly recoded variables
         output_sheet$id <- rownames(output_sheet) # create an id variable for when merging back to og sheet occurs
         output_sheet <- merge(output_sheet, recode_sheet, by = "id")
-        output_sheet <- select( output_sheet,-c(id))
+        output_sheet <- select(output_sheet,-c(id))
 
         # if there are no variables that needed recoding just match old variable names with dictionary for new variable names
       } else {
@@ -277,6 +285,7 @@ merge_linelist <- function(inputdirectory,
       warning("All variables of interest present")
     }
 
+
     # make column for ISO code
     output_sheet$country_iso <- iso
     #change all date columns
@@ -300,7 +309,25 @@ merge_linelist <- function(inputdirectory,
 
     # add cleaned output sheet to a list
     output[[f]] <- output_sheet
+
+    #keep variables of interest
+    output_sheet<- output_sheet %>% dplyr::select(patinfo_id,report_date, patinfo_ageonset, patinfo_ageonsetunit,patinfo_ageonsetunitdays,
+                                                  patinfo_sex, patinfo_resadmin1,
+                                                  patinfo_resadmin2, report_classif,
+                                                  pat_symptomatic, pat_asymptomatic,
+                                                  comcond_preexist1, comcond_preexist,
+                                                  patinfo_occus, expo_travel, expo_travel_country,
+                                                  expo_contact_case, lab_result,
+                                                  lab_datetaken, lab_resdate,
+                                                  patcourse_status,
+                                                  patcourse_datedeath, patcourse_datedischarge, country_iso, contains("patsympt"), patcurrent_status)
+
+
+
+    #add cleaned output sheet to a list
+    output[[f]] <-output_sheet
   }
+
   # merge all cleaned sheets into one
   output_fin <- output[!sapply(output, is.null)]
   big_data <- Reduce(function(...) merge(..., all = T), output_fin)
