@@ -2,7 +2,7 @@
 % Please edit documentation in R/merge_M_and_E.R
 \name{merge_kpi}
 \alias{merge_kpi}
-\title{Merge country monitoring and evaluation data (key performance indicators)}
+\title{Merge country monitoring and evaluation excel tool data (key performance indicators)}
 \usage{
 merge_kpi(
   inputdirectory,
@@ -13,10 +13,10 @@ merge_kpi(
 )
 }
 \arguments{
-\item{inputdirectory}{path to folder containing datasets}
+\item{inputdirectory}{path to folder containing excel tool datasets}
 
 \item{region}{3 letter ISO-code for country of interest, in quotation marks,
-combined multiple countries with c(...), default is "AFRO" to read in all available.}
+combine multiple countries with c(...), default is "AFRO" to read in all available.}
 
 \item{outputdirectory}{path to folder where merged file is to be saved (must exist already)}
 
@@ -26,7 +26,7 @@ combined multiple countries with c(...), default is "AFRO" to read in all availa
 in wide format (default), else will produce long format data}
 }
 \description{
-Merge country monitoring and evaluation data (key performance indicators)
+Merge country monitoring and evaluation excel tool data (key performance indicators)
 }
 \author{
 Alice Carr, Alex Spina

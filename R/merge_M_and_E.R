@@ -3,7 +3,7 @@
 #' @param inputdirectory path to folder containing excel tool datasets
 #'
 #' @param region 3 letter ISO-code for country of interest, in quotation marks,
-#' combined multiple countries with c(...), default is "AFRO" to read in all available.
+#' combine multiple countries with c(...), default is "AFRO" to read in all available.
 #'
 #' @param outputdirectory path to folder where merged file is to be saved (must exist already)
 #'
