@@ -141,6 +141,7 @@ merge_kpi <- function(inputdirectory,
                                   X1 == "Indicateur d’exécution n° 19 : Taux de létalité"                 ~ "indicator_19",
                                   X1 == "Indicateur d’exécution n° 23 : Taux de létalité des cas confirmés signalés au cours des sept derniers jours" ~ "indicator_23",
                                   X1 == "Estimate of percentageof individuals reached by RCCE activity (e.g. CHW  trainings, health worker trainings, hotline usage )" ~ "rcce_outreach_percent",
+                                  X1 == "Estimate of percentageof individuals reached by RCCE activity (e.g. CHW  trainings, health worker trainings, hotline usage)"  ~ "rcce_outreach_percent",
                                   grepl("Number of consultations in primary health facilities and prenatal clinics during the last month ",
                                         og_sheet$X1)                                                      ~ "primare_care_consultations_month",
                                   grepl("Number of consultations in primary health facilities and prenatal clinics during the same month in 2019",
@@ -462,24 +463,37 @@ merge_kpi <- function(inputdirectory,
           origin = "1899-12-30")
         table_sheet1$epi_week <- as.numeric(identifiers[3, 2])
 
-        # define which indicators are character responses
+        # recode group vars based on dictionary
+        table_sheet1$grps <- matchmaker::match_vec(table_sheet1$X1,
+                                                    dictionary = var_dict,
+                                                    from = "var_name",
+                                                    to = "grp_type")
+
+
+        # define which indicators are character responses and date responses
         char_vars <- var_dict$var_name[
-          var_dict$var_type %in% c("date_vars", "yn_vars", "ynp_vars")]
+          var_dict$var_type %in% c("yn_vars", "ynp_vars")]
+        dat_vars  <- var_dict$var_name[
+          var_dict$var_type %in% c("date_vars")]
+
 
         # copy indicator responses in to new columns
         table_sheet1$num_vars <- table_sheet1$X6
         table_sheet1$str_vars <- table_sheet1$X6
+        table_sheet1$dat_vars <- table_sheet1$X6
 
         # set appropriate ones to empty
-        table_sheet1$num_vars[table_sheet1$X1 %in% char_vars] <- NA
+        table_sheet1$num_vars[table_sheet1$X1 %in% c(char_vars, dat_vars)] <- NA
         table_sheet1[!table_sheet1$X1 %in% char_vars,
                      "str_vars"] <- NA
-
-        # make numeric indicators
-        table_sheet1$num_vars <- suppressWarnings(as.numeric(table_sheet1$num_vars))
+        table_sheet1[!table_sheet1$X1 %in% dat_vars,
+                     "dat_vars"] <- NA
 
         # remove combined variable
         table_sheet1 <- table_sheet1[, -2]
+
+        # make numeric indicators
+        table_sheet1$num_vars <- suppressWarnings(as.numeric(table_sheet1$num_vars))
 
         # fix names
         names(table_sheet1) <- c("indicator",
@@ -490,7 +504,8 @@ merge_kpi <- function(inputdirectory,
                                  "date",
                                  "epi_week",
                                  "num_vars",
-                                 "str_vars")
+                                 "str_vars",
+                                 "dat_vars")
 
         ## define evaluation variable
         table_sheet1$evaluation <- NA
