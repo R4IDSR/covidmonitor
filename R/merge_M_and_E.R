@@ -12,6 +12,8 @@
 #' @param wide logical (TRUE/FALSE) of whether the output data frame should be
 #' in wide format (default), else will produce long format data
 #'
+#' @param clean logical (TRUE/FALSE) of whether to clean the output data frame
+#'
 #' @importFrom rio import export
 #' @importFrom tidyr fill pivot_wider
 #' @importFrom matchmaker match_vec
@@ -20,14 +22,12 @@
 #' @author Alice Carr, Alex Spina
 #' @export
 
-## TODO: Delete this
-# inputdirectory = "C:/Users/Spina/World Health Organization/COVID-19 - Outbreak Documentation/KPI"
-
 merge_kpi <- function(inputdirectory,
                       region = "AFRO",
                       outputdirectory = tempdir(),
                       outputname = "kpi_merged",
-                      wide = TRUE) {
+                      wide = TRUE,
+                      clean = TRUE) {
 
   # Read in file list. Creat output directory.
   files <- list.files(path = inputdirectory,
@@ -580,6 +580,12 @@ merge_kpi <- function(inputdirectory,
 
   ## pull together a single dataset
   output <- dplyr::bind_rows(output)
+
+  if (clean) {
+    output <- clean_kpi(inputfile = output,
+                        var_dict = var_dict,
+                        wide = wide)
+  }
 
   ## output file
   # define path to output to

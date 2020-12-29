@@ -9,7 +9,8 @@ merge_kpi(
   region = "AFRO",
   outputdirectory = tempdir(),
   outputname = "kpi_merged",
-  wide = TRUE
+  wide = TRUE,
+  clean = TRUE
 )
 }
 \arguments{
@@ -24,6 +25,8 @@ combine multiple countries with c(...), default is "AFRO" to read in all availab
 
 \item{wide}{logical (TRUE/FALSE) of whether the output data frame should be
 in wide format (default), else will produce long format data}
+
+\item{clean}{logical (TRUE/FALSE) of whether to clean the output data frame}
 }
 \description{
 Merge country monitoring and evaluation excel tool data (key performance indicators)

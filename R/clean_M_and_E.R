@@ -1,14 +1,21 @@
-#' Clean country monitoring and evaluation excel tool data (key performance indicators)
+#' Internal function to clean country monitoring and evaluation excel tool data
+#' (key performance indicators)
 #'
 #' @param inputfile a data frame produced by the [covidmonitor::merge_kpi()]
+#'
+#' @param var_dict data dictionary sourced in [covidmonitor::merge_kpi()]
+#'
+#' @param wide logical (TRUE/FALSE) of whether the output data frame should be
+#' in wide format (default), else will produce long format data - defined in
+#' [covidmonitor::merge_kpi()]
 #'
 #' @importFrom dplyr mutate case_when across all_of
 #'
 #' @author Alice Carr, Alex Spina
 
-## TODO: Decide whether this is an internal function or if is used in RMD
-
-clean_kpi <- function(inputfile) {
+clean_kpi <- function(inputfile,
+                      var_dict,
+                      wide) {
 
 
   ## define date variables
@@ -55,9 +62,7 @@ clean_kpi <- function(inputfile) {
 
     ## fix date variables
     inputfile <- dplyr::mutate(inputfile,
-                               dplyr::across(dplyr::all_of(DATEVARS), clean_dates_single))
-
-    inputfile <- clean_dates(inputfile, DATEVARS)
+                               dplyr::across(dplyr::all_of(DATEVARS), clean_dates))
 
     ## fix yes/no and yes/no/partially variables
     inputfile <- dplyr::mutate(inputfile,
@@ -74,12 +79,38 @@ clean_kpi <- function(inputfile) {
                                                         "Partiellement", "partiellement") ~ "Partially"
                                              )))
 
+    ## return the dataset
+    inputfile
+
   } else {
     ## clean the long version
 
 
+    ## TODO: fix country coding to be based off a common dictionary
+    inputfile <- dplyr::mutate(inputfile,
+                               country = dplyr::case_when(
+                                 country == "Burkina Faso"         ~       "Burkina Faso",
+                                 country == "COMORES"              ~       "Comores",
+                                 country == "CÔTE D'IVOIRE"        ~       "Cote d'Ivoire",
+                                 country == "Equatorial Guinea"    ~       "Equatorial Guinea",
+                                 country == "Eswatini"             ~       "Eswatini",
+                                 country == "GABON"                ~       "Gabon",
+                                 country == "Ghana"                ~       "Ghana",
+                                 country == "NIGER"                ~       "Niger",
+                                 country == "République du Congo"  ~       "Republic of Congo",
+                                 country == "SAO TOME ET PRINCIPE" ~       "Sao Tome & Principe",
+                                 country == "SENEGAL"              ~       "Senegal",
+                                 country == "Seychelles"           ~       "Seychelles",
+                                 country == "Sierra Leone"         ~       "Sierra Leone",
+                                 country == "South Sudan"          ~       "South Sudan",
+                                 country == "Uganda"               ~       "Uganda")
+
+
+    )
+
+
     ## clean reporting frequency
-    inputfile <- mutate(inputfile,
+    inputfile <- dplyr::mutate(inputfile,
                         reporting_frequency = case_when(
                           reporting_frequency %in% c("Bi-weekly",
                                                      "Bihebdomadaire",
@@ -92,21 +123,27 @@ clean_kpi <- function(inputfile) {
                           reporting_frequency %in% ("Semestruelle")     ~ "Biannually"
                         ))
 
-    ## TODO: clean grps (french come out all weird)
-    ## TODO: clean countries as above based on dictionary
-    ## TODO: clean each of the str rows using YN and YNP vars defined above
+    ## clean the str rows using YN and YNP vars defined above
+    inputfile <- dplyr::mutate(inputfile,
+                        str_vars = dplyr::case_when(
+                          str_vars %in% c("Yes", "yes", "YES",
+                                   "Oui", "oui", "OUI",
+                                   "Y", "y",
+                                   "Totalement")                     ~ "Yes",
+                          str_vars %in% c("No",  "no",  "NO",
+                                   "Non", "non", "NON",
+                                   "N", "n")                         ~ "No",
+                          str_vars %in% c("Partially", "partially",
+                                   "Partiellement", "partiellement") ~ "Partially"
+                        ))
 
+    ## clean dat_var with function
+    inputfile$dat_vars <- clean_dates(inputfile$dat_vars)
 
-
-
-
-
+    ## return the dataset
+    inputfile
 
   }
-
-
-
-
 
 
 }

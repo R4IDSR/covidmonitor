@@ -2,15 +2,23 @@
 % Please edit documentation in R/clean_M_and_E.R
 \name{clean_kpi}
 \alias{clean_kpi}
-\title{Clean country monitoring and evaluation excel tool data (key performance indicators)}
+\title{Internal function to clean country monitoring and evaluation excel tool data
+(key performance indicators)}
 \usage{
-clean_kpi(inputfile)
+clean_kpi(inputfile, var_dict, wide)
 }
 \arguments{
 \item{inputfile}{a data frame produced by the \code{\link[covidmonitor:merge_kpi]{covidmonitor::merge_kpi()}}}
+
+\item{var_dict}{data dictionary sourced in \code{\link[covidmonitor:merge_kpi]{covidmonitor::merge_kpi()}}}
+
+\item{wide}{logical (TRUE/FALSE) of whether the output data frame should be
+in wide format (default), else will produce long format data - defined in
+\code{\link[covidmonitor:merge_kpi]{covidmonitor::merge_kpi()}}}
 }
 \description{
-Clean country monitoring and evaluation excel tool data (key performance indicators)
+Internal function to clean country monitoring and evaluation excel tool data
+(key performance indicators)
 }
 \author{
 Alice Carr, Alex Spina
