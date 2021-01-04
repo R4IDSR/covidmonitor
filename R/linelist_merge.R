@@ -89,7 +89,7 @@ merge_linelist <- function(inputdirectory,
     # ISO codes of country file
     iso <- substr(tools::file_path_sans_ext(basename(files[f])), 0, 3)
     warning(paste(iso, "processing"))
-    # print(iso) #here for debugging
+    print(iso) #here for debugging
 
     # for this iso code set parameters dictating file load in and clean process using the template_check dictionary
     sheetname <- template_check$sheetname[template_check$country == iso]
@@ -155,11 +155,11 @@ merge_linelist <- function(inputdirectory,
 
         recode_sheet <- og_sheet[, which(names(og_sheet) %in% recode_vars)]
         # remove following instances from variable names that need recoding for the next step to leave what will become the recoded value
-        names(recode_sheet) <- gsub(x = names(recode_sheet), pattern = "COVID.|Co19.|comcond.|patsympt.|patinfo.", replacement = "", ignore.case = T)
+        names(recode_sheet) <- gsub(x = names(recode_sheet), pattern = "COVID.|Co19.|comcond.|patsympt.|patinfo.|COVID_19_", replacement = "", ignore.case = T)
 
         # replace all instances of no with missing
         recode_sheet <- data.frame(lapply(recode_sheet, function(x) {
-          gsub("NAO|NON|NO|none|nil|^[nN]$|Know", NA, x, ignore.case = T, perl = T)
+          gsub("NAO|NON|NO|none|nil|^[nN]$|Know|0", NA, x, ignore.case = T, perl = T)
         }), stringsAsFactors = F)
         # replace all instances of yes with 1
         recode_sheet <- data.frame(lapply(recode_sheet, function(x) {
@@ -169,7 +169,10 @@ merge_linelist <- function(inputdirectory,
         # where all instances were 1 (yes) recode to the name of the variable for merge
         recode_sheet <- data.frame(sapply(names(recode_sheet), function(x) ifelse(recode_sheet[, x] == 1, x, recode_sheet[, x])), stringsAsFactors = F)
         colnames(recode_sheet) <- gsub("^X", "",  colnames(recode_sheet))
+
         # renames variables with key of what to code to
+        recode_vars <- gsub(x =recode_vars, pattern = "COVID.|Co19.|comcond.|patsympt.|patinfo.|COVID_19_", replacement = "", ignore.case = T)
+        # above line present as this step was done to the variables in recode sheet
         recode_sheet<-setnames(recode_sheet,old=c(recode_vars),new=c(paste(recode_vars, variable_to, sep = ".")))
 
         # concatenate all common variables using split method, method now not dependant on data.table
@@ -196,7 +199,8 @@ merge_linelist <- function(inputdirectory,
         recode_sheet <- recode_sheet[, which(names(recode_sheet) %in% c(what_to_match, "id"))]
 
         # remove the columns that required recoding from original sheet
-        output_sheet <- og_sheet[, -which(names(og_sheet) %in% recode_vars)]
+
+        output_sheet<- select(og_sheet,-c(contains(recode_vars)))
 
         # match old variable names with dictionary for new variable names
         names(output_sheet) <- with(var_dict_country, new_var[match(names(output_sheet), old_var_r)])
