@@ -21,11 +21,11 @@
 
 library(dplyr) #still have this here because across not supported in standard dplyr ?
 
-# the inputs that i have been using
-inputdirectory <- "inst/extdata/frank_linelists/"
-outputdirectory <- "inst/"
-outputname <- "Merged_linelist_"
-isotomerge <- "AFRO"
+#the inputs that i have been using
+# inputdirectory <- "inst/extdata/frank_linelists_uptaded_2020-01-04//"
+# outputdirectory <- "inst/"
+# outputname <- "Merged_linelist_"
+# isotomerge <- "AFRO"
 
 merge_linelist <- function(inputdirectory,
                            outputdirectory = tempdir(),
@@ -101,7 +101,7 @@ merge_linelist <- function(inputdirectory,
     if (grepl(files[f], pattern = "\\.xlsb$", ignore.case = TRUE)) {
       warning(paste(iso, "file is in xlsb format, please resave file in xlsx format before proceeding"))
     } else {
-      og_sheet <- rio::import(files[f], which = sheetname, skip = skip)
+      og_sheet <- rio::import(files[f], which = sheetname, skip = skip, guess_max=10000000) #guess max to ensure no cells are missing when reading in if many empty columns preceeded
     }
 
     # clean variable names to removed unwated regex patterns, replace all spaces with a ., inorder to match var_dict dictionary
@@ -128,7 +128,7 @@ merge_linelist <- function(inputdirectory,
     var_dict_country <- dplyr::filter(var_dict, country == iso)
     var_dict_country <- var_dict_country[var_dict_country$old_var_r %in% names(og_sheet), ]
 
-    # list variables to drop that are non-template
+        # list variables to drop that are non-template
     drop_nontemplate_vars <- var_dict_country$old_var_r[var_dict_country$notes == "non_template" & !is.na(var_dict_country$notes)]
 
 
@@ -154,6 +154,9 @@ merge_linelist <- function(inputdirectory,
         warning(paste("Recoding variables:", paste(recode_vars, collapse = ","), "\n \n Recoding to:", paste(what_to_match, collapse = ",")))
 
         recode_sheet <- og_sheet[, which(names(og_sheet) %in% recode_vars)]
+        # remove the columns that required recoding from original sheet
+        output_sheet<- select(og_sheet,-c(contains(recode_vars)))
+
         # remove following instances from variable names that need recoding for the next step to leave what will become the recoded value
         names(recode_sheet) <- gsub(x = names(recode_sheet), pattern = "COVID.|Co19.|comcond.|patsympt.|patinfo.|COVID_19_", replacement = "", ignore.case = T)
 
@@ -198,10 +201,6 @@ merge_linelist <- function(inputdirectory,
         colnames(recode_sheet) <- gsub("^X", "",  colnames(recode_sheet))
         recode_sheet <- recode_sheet[, which(names(recode_sheet) %in% c(what_to_match, "id"))]
 
-        # remove the columns that required recoding from original sheet
-
-        output_sheet<- select(og_sheet,-c(contains(recode_vars)))
-
         # match old variable names with dictionary for new variable names
         names(output_sheet) <- with(var_dict_country, new_var[match(names(output_sheet), old_var_r)])
         # cbind with newly recoded variables
@@ -234,7 +233,7 @@ merge_linelist <- function(inputdirectory,
     # Convert to character date for final merge
     datescharacter <- output_sheet %>%
       select(contains("Date", ignore.case = T), id) %>%
-      mutate_at(vars(contains("Date", ignore.case = T)), lubridate::parse_date_time, orders = c("ymd", "Ymd", "dmy", "dmY", "%Y-%m-%d", "%y-%m-%d", "%d-%m-%y", "dBY", "ymd HMS", "Ymd HMS")) %>%
+      mutate_at(vars(contains("Date", ignore.case = T)), lubridate::parse_date_time, orders = c("ymd", "Ymd", "dmy", "dmY", "%Y-%m-%d", "%y-%m-%d", "%d-%m-%y", "dBy","dBY", "ymd HMS", "Ymd HMS")) %>%
       mutate_at(vars(contains("Date", ignore.case = T)), as.Date, origin = "1899-12-30") %>%
       mutate_at(vars(contains("Date", ignore.case = T)), as.character)
 
@@ -307,29 +306,12 @@ merge_linelist <- function(inputdirectory,
       patinfo_occus, expo_travel, expo_travel_country,
       expo_contact_case, lab_result,
       lab_datetaken, lab_resdate,
-      patcourse_status,
+      patcourse_status, patcourse_dateonset,
       patcourse_datedeath, patcourse_datedischarge, country_iso, contains("patsympt"), patcurrent_status
     )
 
     # add cleaned output sheet to a list
     output[[f]] <- output_sheet
-
-    #keep variables of interest
-    output_sheet<- output_sheet %>% dplyr::select(patinfo_id,report_date, patinfo_ageonset, patinfo_ageonsetunit,patinfo_ageonsetunitdays,
-                                                  patinfo_sex, patinfo_resadmin1,
-                                                  patinfo_resadmin2, report_classif,
-                                                  pat_symptomatic, pat_asymptomatic,
-                                                  comcond_preexist1, comcond_preexist,
-                                                  patinfo_occus, expo_travel, expo_travel_country,
-                                                  expo_contact_case, lab_result,
-                                                  lab_datetaken, lab_resdate,
-                                                  patcourse_status,
-                                                  patcourse_datedeath, patcourse_datedischarge, country_iso, contains("patsympt"), patcurrent_status)
-
-
-
-    #add cleaned output sheet to a list
-    output[[f]] <-output_sheet
   }
 
   # merge all cleaned sheets into one
