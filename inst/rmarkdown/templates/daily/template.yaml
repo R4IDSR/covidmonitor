@@ -1,0 +1,4 @@
+name: WHO daily Covid-19 report
+description: >
+  An automated outbreak report template for Covid-19
+create_dir: false

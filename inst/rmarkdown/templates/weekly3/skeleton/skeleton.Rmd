@@ -1,0 +1,588 @@
+---
+title: "COVID-19 Pandemic in the African region"
+author: "Planning and Health Information Pillar"
+date: "`r format(Sys.time(), '%A %d %B %Y')`"
+output:
+  html_document: default
+  word_document: default
+subtitle: Weekly situation update as of 01 September 2020)
+---
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// setup \\\
+--------------------------------------------------------------------------------
+Several packages are required for different aspects of  analysis with *R*. 
+You will need to install these before starting. 
+These packages can be quite large and may take a while to download in the
+field. If you have access to a USB key with these packages, it makes sense to
+copy and paste the packages into your computer's R package library 
+(run the command .libPaths() to see the folder path). 
+For help installing packages, please visit https://r4epis.netlify.com/welcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r setup, include=FALSE, cache=F}
+
+# set options for rmarkdown 
+knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
+                      message = FALSE, # hide all messages in output
+                      warning = FALSE, # hide all warnings in output
+                      collapse = TRUE, # combine all source/output to single block
+                      fig.align = 'center', # centre figures on page
+                      fig.height = 4,  # define figure height 
+                      dpi = 300,       # define figure definitions 
+                      cache = F)       # run all code chunks (even if repeated)
+
+
+## Installing required packages for this template
+required_packages <- c(
+                       "knitr",          # create output docs
+                       "kableExtra",     # create nicer tables in html files
+                       
+                       ## not sure these html packages are required... 
+                       "htmltools",      # working with html output 
+                       "DT",             # for creating tables  in html files
+                       "webshot",        # for putting images  in html files
+                       
+                       "here",           # find your files
+                       
+                       "rio",            # read in data
+                       
+                       "lubridate",      # work with dates 
+                       "aweek",          # define epi weeks (dont need this if using isoweek/lubridate)
+                       "ISOweek",        # define epi weeks
+          
+                       "tidyverse",      # all tidy functions (dont need whole tidyverse - pull apart)
+                       
+                       "janitor",        # clean/shape data
+                       "epitrix",        # clean/shape data (dont think epitrix needed - use janitor)
+                       "tidyr",          # clean/shape data
+                       "matchmaker",     # dictionary-based standardization of variables
+                       
+                       "epitools",       # for two-by-two tables (this package is crap, avoid)
+                       
+                       "skimr",          # browse data 
+
+                       "ggrepel"         # space out overlapping data in ggplot2
+                       )
+  
+for (pkg in required_packages) {
+  # install packages if not already present
+  if (!pkg %in% rownames(installed.packages())) {
+    install.packages(pkg)
+  }
+  # load packages to this current session 
+  library(pkg, character.only = TRUE)
+}
+
+```
+
+
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// define current week \\\
+--------------------------------------------------------------------------------
+ 
+This section is used to define your week of interest. It will be used later
+to filter your outputs. 
+You can also set the day which your epiweek starts on - the default for this
+is Monday. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r define_current_week}
+
+## current week
+this_week <- as.Date("2020-09-15")
+
+## week number of current week
+No_week <- week(this_week)
+
+## number of expected countries reporting  
+expected_countries <- 46
+```
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// import_data \\\
+--------------------------------------------------------------------------------
+This chunk reads in all the data necessary as well as dictionaries. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r import_data}
+
+## define path to folder with raw data 
+data_folder <- here::here("data", "raw")
+
+
+## import linelist of confirmed cases 
+covid_afro_00 <- 
+  paste0(data_folder, "/ConfirmedCases.csv") %>% 
+  rio::import() %>% 
+  ## clean variable names 
+  clean_names() %>% 
+  ## only keep certain columns 
+  select(reporting_date, 
+         country, 
+         outcome, 
+         date_of_death, 
+         healthcare_worker,
+         province) 
+
+## import data dictionary 
+cleaning_rules <- rio::import(here::here("data","cleaned","cleaning_rules_s.xlsx"))
+
+## import data defining transmission pattern 
+Tab_transm <- 
+  paste0(data_folder, "/Infection_classification_template_final_week34.xlsx") %>% 
+  import(sheet = 1, skip = 5) %>% 
+  clean_names()
+
+## import data on lab testing
+covid_testing <-  paste0(data_folder, "/lab indicator_summary_3Sept2020.xlsx") %>% 
+  import(sheet = 1, skip = 0) %>% 
+  clean_names()
+
+## import case counts data from South Africa
+covid_south_africa <- paste0(data_folder, "/south_africa_cases.xlsx") %>% 
+  import(sheet = 1, skip = 0) %>%
+  clean_names()
+
+## import case counts data from WHO eastern mediteranean region
+covid_emro<-  paste0(data_folder, "/emro_cases.xlsx") %>% 
+  import(sheet = 1, skip = 0) %>% 
+  clean_names()
+
+
+```
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// clean_data \\\
+--------------------------------------------------------------------------------
+This chunk does basic data cleaning 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r clean_data}
+
+## fix date variables in original dataset 
+covid_afro_00$date_of_death <- lubridate::as_date(covid_afro_00$date_of_death)
+covid_afro_00$reporting_date <- lubridate::as_date(covid_afro_00$reporting_date)
+
+## create clean dataset by recoding variables based on dictionary
+covid_afro <- match_df(covid_afro_00, dictionary = cleaning_rules)
+
+## find the date of the initial report (for whole region)
+covid_afro$first_report <- min(covid_afro$reporting_date)
+
+# create epi-week variables (return the first date of the week it is in)
+covid_afro$epi_week <- floor_date(covid_afro$reporting_date,
+                                  "week", week_start = 1)
+
+covid_afro$epi_week2 <- floor_date(covid_afro$date_of_death, 
+                                   "week", week_start = 1)
+
+## create an epi week variable as calendar week 
+## so can show prev week easier 
+covid_afro$calendar_week <- week(covid_afro$reporting_date)
+covid_afro$calendar_week2 <- week(covid_afro$date_of_death)
+
+```
+
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// prepare_text_week_and_cumul \\\
+--------------------------------------------------------------------------------
+This chunk prepares values to fill the text for the current week and 
+cumulatively 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r prepare_text_week_and_cumul}
+
+## Cumulative number of cases
+
+## define a dataset to use for case counts (seems unecessary considering so large, just use direct)
+cumul_cases <- 
+ covid_afro %>% 
+  ## only keep rows with a defined country
+  filter(country!= "") 
+
+## get the cumulative number of cases (here too could just do directly)
+cumul_cases_ok <- nrow(cumul_cases)
+
+## define a dataset to use for death counts (seems unecessary considering so large, just use direct)
+cumul_deaths <- 
+ covid_afro %>% 
+  ## only keep rows with defined country and died
+  filter(country != "" & 
+           outcome == "Dead") 
+
+## get the cumulative number of deaths (here too could just do directly) 
+cumul_deaths_ok <- nrow(cumul_deaths)
+
+## CFR
+CFR <- round( (cumul_deaths_ok / cumul_cases_ok) * 100,
+              digits = 2)
+
+
+## define a dataset to use for recovery counts (seems unecessary considering so large, just use direct)
+cumul_recoveries <- 
+ covid_afro %>% 
+  filter(country != "" & 
+           outcome == "Recovered")
+
+## get the cumulative number of recoveries (here too could just do directly) 
+cumul_recoveries_ok <- nrow(cumul_recoveries)
+
+perc_recovered <- round(
+  (cumul_recoveries_ok / cumul_cases_ok) * 100,
+  digits = 1)
+
+
+## define a dataset to use for countries reporting (seems unecessary considering so large, just use direct)
+tab_afro_cum <-  covid_afro %>% 
+  ## only keep non-missings that were reported in the last week 
+  filter(country !="NA" &  # (not why this here, but maybe data comes out weird)
+           !is.na(country) & 
+           reporting_date > (this_week - 7) & 
+           reporting_date <= this_week) %>% 
+  count(country) %>% 
+  group_by(country) # not sure group_by necessary, leaving for now (incase used later down)
+
+## get number countries that reported cases this week
+nb_countries_this_week <- nrow(tab_afro_cum)
+
+## get the percentage of expected that reported 
+perc_countries_this_week <- round(
+  (nb_countries_this_week / expected_countries) * 100,
+  digits = 1)
+
+## get the cummulative number of cases in EMRO (could just use this directly in text?)
+nb_cases_emro <- covid_emro$cumulative_cases
+
+## get the cumulative number of cases in afro and emro combined 
+nb_cases_afric <- cumul_cases_ok + nb_cases_emro
+
+## get the cumulative number of deaths in EMRO 
+nb_deaths_emro <- covid_emro$cumul_deaths
+
+## get the cumulative num deaths in afro and emro combined 
+nb_deaths_afric <- cumul_deaths_ok + nb_deaths_emro
+
+## get the case fatality ratio for whole continent 
+CFR_Afric <- round(
+  (nb_deaths_afric/nb_cases_afric) * 100,
+  digits = 1)
+
+## define a dataset to use for south africa (not neccesary?)
+cumul_cases_sa <- 
+ covid_afro %>% 
+  filter(country == "South Africa")
+  
+## get the number of cases in south africa 
+cumul_cases_sa <- nrow(cumul_cases_sa)
+
+## get the percentage that south africa makes of the total 
+perc_cases_sa <- round( (cumul_cases_sa/ cumul_cases_ok) * 100,
+                        digits = 1)
+
+# Cumul cases past 7 days
+
+cumul_cases_past7 <- 
+ covid_afro %>% 
+  ## only keep non-missings that were reported in the last week 
+  filter(country !="NA" &  # (not why this here, but maybe data comes out weird)
+           !is.na(country) & 
+           reporting_date > (this_week - 7) & 
+           reporting_date <= this_week) %>%
+  count(country) %>% 
+  group_by(country) # not sure this is necessary either... 
+
+## get the total number of cases in last seven days 
+new_cases_last7 <- nrow(cumul_cases_past7)
+
+## define data set to use for getting countries with less than 1000 cases 
+tab_less1000_1 <-  covid_afro %>% 
+  filter(country!="NA") %>% 
+  count(country) %>% 
+    filter(n < 1000) 
+## get counts 
+nb_countries_less1000 <- nrow(tab_less1000_1)
+
+
+## get case counts for prev week 
+cumul_cases_prev <- covid_afro %>% 
+  filter(calendar_week < No_week) %>% 
+  nrow()
+
+## get death counts for prev week 
+## (may need to cross check this with missing dates)
+## there are missing dates so maybe just do it based on outcome variable and date of report
+cumul_deaths_prev <- covid_afro %>% 
+  filter(calendar_week2 < No_week & 
+           !is.na(calendar_week2)) %>% 
+  nrow()
+
+
+```
+
+##	_Epidemiological update_
+
+* As of `r this_week`, on the African continent there were`r nb_cases_afric` 
+reported cases and `r nb_deaths_afric` deaths. 
+( `r CFR_Afric` % of case fatality rate). 
+
+* In the WHO African Region there are `r cumul_cases_ok` cases and 
+`r cumul_deaths_ok`deaths (cf. `r cumul_cases_prev`   cases and `r cumul_deaths_prev`
+deaths last week) - about `r perc_cases_sa`% of cumulative cases in South Africa.
+
+* `r new_cases_last7`cases recorded over the past 7 days - top 10 account for 
+over 83% of these cases ( cf. 33,500  and 88% last week) -Table I)
+
+
+```{r}
+
+tab_top10_14days <-  covid_afro %>% 
+  filter(country!="NA") %>% 
+  filter(reporting_date>="2020-09-09") %>% 
+  select(country) %>% 
+  count(country) %>% 
+  arrange(desc(n)) %>% 
+  mutate(total_cases=sum(n)) %>% 
+  mutate(nb_cases=n) %>% 
+    mutate(perc_cases=round((nb_cases/total_cases)*100,1)) %>% 
+  filter(nb_cases>=536) %>%
+  janitor::adorn_totals("row",fill="-",na.rm=TRUE) %>% 
+  select(country, nb_cases, perc_cases) %>% 
+    kable(caption="Tableau I: Countries that reported the highest number of cases during the last 14 days") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center", font_size = 11)
+
+tab_top10_14days
+
+
+```
+
+* Still `r nb_countries_less1000` countries with fewer than 1000 reported cases (Table II)
+
+```{r}
+
+
+tab_less1000 <-  covid_afro %>% 
+  filter(country!="NA") %>% 
+    select(country) %>% 
+  count(country) %>% 
+  arrange(desc(n)) %>% 
+  mutate(nb_cases=n) %>% 
+    filter(nb_cases<1000) %>% 
+  select(country, nb_cases) %>% 
+  kable(caption="Tableau II: Countries twith less than 1,000 cumulative cases") %>% 
+ kable_styling(bootstrap_options = "striped", full_width = F, position = "center", font_size = 11)
+  
+
+tab_less1000
+
+
+```
+
+* South Africa has `r cumul_cases_sa` cases.
+
+```{r}
+
+covid_south_africa$date <- as.character(covid_south_africa$date)
+
+covid_south_africa$date <- recode(covid_south_africa$date, "2020-09-08"="Sept02_Sep08", "2020-09-01"="Aug26_Sept01")
+
+
+tab_south_Africa <-  covid_south_africa %>% 
+  select(date, province, cumulative_cases) %>% 
+  group_by(date, province) %>% 
+  spread(date,cumulative_cases, fill=0) %>% 
+   janitor::adorn_totals("row",fill="-",na.rm=TRUE) %>% 
+  mutate(perc_increase_in_cumulative=round(((Sept02_Sep08/Aug26_Sept01)-1)*100,1)) %>% 
+  kable(caption="Tableau III: Cumulative cases by province in South Africa") %>% 
+ kable_styling(bootstrap_options = "striped", full_width = F, position = "center", font_size = 11)
+
+tab_south_Africa
+
+
+```
+
+
+
+##	_change in  number of new cases during the last 7 days_
+
+* `r perc_countries_this_week`% of countries (`r nb_countries_this_week` out of 46) reported new cases during the last 14 days.
+
+The number of cases reported over the past 14 days increased by over 20% compared to the previous 14 days in 24 countries: SEychelles (3 new cases during the last 14 days Vs 0 the previous 14 days), Burkina Faso, Eritrea, Lesotho, Comoros, Sao Tome and Principe, Central Africa Republic, Uganda, Mozambique, South Sudan, Mali, Sierra Leone, Chad, Cape Verde, Botswana, Togo, Zimbabwe, Angola, Mauritania, Burundi, Madagascar, Guinea, Cote d'ivoire, and Cameroon.
+
+```{r}
+
+covid_afro$period <- ifelse(covid_afro$reporting_date>="2020-09-02", "Sept02_Sept15",
+ifelse(covid_afro$reporting_date<"2020-09-02"&covid_afro$reporting_date>="2020-08-23", "Aug23_Sept01","Before_Aug23"))
+
+table(covid_afro$period)
+
+
+tab_increase <- covid_afro %>% 
+  filter(country!="") %>% 
+       select(country,period) %>%
+     count(country,period) %>% 
+         spread(period, n, fill=0) %>% 
+     mutate(perc_increase=round(((Sept02_Sept15-Aug23_Sept01)/Aug23_Sept01)*100,1)) %>% 
+  arrange(desc(perc_increase)) %>% 
+  filter(perc_increase>=20) %>% 
+     select(country, Sept02_Sept15,Aug23_Sept01,perc_increase ) %>% 
+   kable(caption="Tableau IV: Countries the number of new cases increased by 20% over the past 14 days") %>% 
+ kable_styling(bootstrap_options = "striped", full_width = F, position = "center", font_size = 11)
+
+nrow(tab_increase)
+
+tab_increase
+   
+
+```
+* The number of cases reported over the past 14 days remained stabe (increased of decreased by less than 20% compared to the previous 14 days) in 17 countries, including South Africa and Algeria where the number of cases during the last 7 days increased respectively by 9.7% and 3.6%.
+
+```{r}
+tab_increase1 <- covid_afro %>% 
+  filter(country!="") %>% 
+       select(country,period) %>%
+     count(country,period) %>% 
+         spread(period, n, fill=0) %>% 
+     mutate(perc_increase=round(((Sept02_Sept15-Aug23_Sept01)/Aug23_Sept01)*100,1)) %>% 
+  arrange(desc(perc_increase)) %>% 
+  filter(perc_increase>-20) %>% 
+  filter(perc_increase<20) %>%
+     select(country, Sept02_Sept15,Aug23_Sept01,perc_increase ) %>% 
+   kable(caption="Tableau V: Countries the number of new cases increased or decreased  by less than 20% over the past 14 days") %>% 
+ kable_styling(bootstrap_options = "striped", full_width = F, position = "center", font_size = 11)
+
+nrow(tab_increase1)
+
+tab_increase1
+
+   
+```
+
+* The number of cases reported over the past 14 days decreased by over 20% (compared to the previous 14 days) in 5 countries: Gambia (-34.3%), Malawi (-35.6%), Congo (-60.7%), Rwanda (-61.5%) and Guinea-Bissau (-68.8%).  
+
+```{r}
+
+tab_increase2 <- covid_afro %>% 
+  filter(country!="") %>% 
+       select(country,period) %>%
+     count(country,period) %>% 
+         spread(period, n, fill=0) %>% 
+     mutate(perc_increase=round(((Sept02_Sept15-Aug23_Sept01)/Aug23_Sept01)*100,1)) %>% 
+  arrange(desc(perc_increase)) %>% 
+   filter(perc_increase<=-20) %>%
+      select(country, Sept02_Sept15,Aug23_Sept01,perc_increase )%>% 
+   kable(caption="Tableau VI: Countries the number of new cases decreased by 20% over the past 14 days") %>% 
+ kable_styling(bootstrap_options = "striped", full_width = F, position = "center", font_size = 11)
+
+tab_increase2
+
+
+```
+
+##	_HCW infections_
+
+* The region continues to record infections in Health workers. As of `r this_week`, 41 540 infections in health workers have been recorded in 42 countries of the region, reppresenting 3.8% of all cases (Table V). The % of cases among health workers is above 5% in 12 countries: Liberia, Niger, Guinea-Bissau, Eq Guinea,Mauritius,Sierra Leone,Burundi, Chad, Burkina Faso, Benin, Mozambique and Eswatini.
+* Comoros, Eritrea, Mali, Rwanda and Seychelles are the only five countries that have not yet recorded infections in health workers.
+
+```{r}
+
+tab_hcw <- covid_afro %>% 
+           filter(country!="") %>% 
+           subset(healthcare_worker=="Yes"|healthcare_worker=="yes") %>% 
+           select(country) %>%
+           count(country) %>% 
+           group_by(country) %>% 
+           summarise(nb_hcw=sum(n)) %>% 
+           select(country, nb_hcw) 
+
+
+tab_afro_cases <-  covid_afro %>% 
+  filter(country!="NA") %>% 
+  select(country) %>% 
+  count(country) %>% 
+  mutate(total_cases=n) %>% 
+  select(country, total_cases)
+
+
+tab_hcw_cases <-  tab_afro_cases  %>% 
+  left_join(tab_hcw, by="country") %>% 
+  mutate_all(funs(replace_na(., 0))) %>% 
+  janitor::adorn_totals("row",fill="-",na.rm=TRUE) %>% 
+  mutate(perc_cases_hcw=round((nb_hcw/total_cases)*100,1)) %>% 
+  select(country, total_cases, nb_hcw,  perc_cases_hcw) %>% 
+  arrange(desc(perc_cases_hcw)) %>%
+  set_names("Country","Cumulative cases","Nb HWs","%") %>% 
+kable(caption="Tableau VII: Distribution of COVID-19 cases among health workers by country in the Africa region") %>% 
+ kable_styling(bootstrap_options = "striped", full_width = F, position = "center", font_size = 11)
+
+tab_hcw_cases
+
+
+```
+
+##  _Testing update_
+
+* As of 03 September 2020, a total of 8,831,870 tests have been performed in the region (85.8 tests per 10,000 people and 12% of positivity rate). Nine countries have performed over 200 tests per 10,000 (Cape Verde, South Africa, Gabon, Mauritius, Botswana, Equatorial Guinea, Seychelles, Rwanda, and Namibia). Twenty-one countries have a positivity rate between 3% and 12% , but only four have over 200 cumulative tests per 10,000 people (Seychelles, Equatorial Guinea and Cape verde).
+
+```{r}
+
+names(covid_testing)
+
+tab_tests <- covid_testing %>%
+             filter(cumulative_pcr_sept03!="") %>% 
+             select(country, cumulative_pcr_sept03,test_capita_sept03,
+                    positivity_sept03 ) %>% 
+             arrange(desc(test_capita_sept03)) %>%
+  kable(caption="Tableau VIII: Cumulative test per capita and positivity rate by country in the Africa nregion") %>% 
+ kable_styling(bootstrap_options = "striped", full_width = F, position = "center", font_size = 11)
+  
+tab_tests
+
+```
+* Among 23 countries where the number of new cases decreased by at least 20% over the past 14 days, 18 recorded less than 5% of positivity rate during the last 14 days. In these 18 countries, the pandemic is about to be controlled, assuming that surveillance for suspected cases is comprehensive.
+
+```{r}
+
+
+tab_increase3 <- covid_afro %>% 
+  filter(country!="") %>% 
+       select(country,period) %>%
+     count(country,period) %>% 
+         spread(period, n, fill=0) %>% 
+     mutate(perc_increase=round(((Aug26_Sept08-Aug12_Aug25)/Aug12_Aug25)*100,1)) %>% 
+  arrange(desc(perc_increase)) %>% 
+   filter(perc_increase<=-20)
+
+
+ tab_tests2 <- covid_testing %>%
+             filter(tests_previous14!="") %>% 
+             filter(positivity_rate_last14>0) %>% 
+             select(country, positivity_rate_last14 )
+
+
+
+tab_positivity_countries_declining <-  tab_increase3  %>% 
+  left_join(tab_tests2, by="country") %>% 
+  mutate_all(funs(replace_na(., 0))) %>% 
+  arrange(desc(positivity_rate_last14)) %>% 
+  select(country,perc_increase, positivity_rate_last14 ) %>% 
+  kable(caption="Tableau IX:  positivity rate in countries where is declining trend") %>% 
+ kable_styling(bootstrap_options = "striped", full_width = F, position = "center", font_size = 11)
+
+tab_positivity_countries_declining
+
+```
+
+
+---
+
+
+
+
