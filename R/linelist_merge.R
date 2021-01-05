@@ -312,6 +312,7 @@ merge_linelist <- function(inputdirectory,
 
     # add cleaned output sheet to a list
     output[[f]] <- output_sheet
+
   }
 
   # merge all cleaned sheets into one
