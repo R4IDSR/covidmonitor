@@ -1,7 +1,7 @@
 library(dplyr)
 library(data.table)
 
-big_data<-rio::import(here::here("inst", "Merged_linelist_2021-01-05.xlsx"), readxl = FALSE)
+# big_data<-rio::import(here::here("inst", "Merged_linelist_2021-01-05.xlsx"), readxl = FALSE)
 #import has for some reason lost the values in some columns (ageonsetdays), due to the read_excel that is used.
 #as the output from the merge file is a .xlsx we can specify readxl =FALSE so the read.xlsx function will be used on the import instead
 #the read.xlsx functions requires the dependancy openxlsx
@@ -126,7 +126,7 @@ big_data_clean<-big_data_clean[ , -which(names(big_data_clean) %in% symptvars)]
 
 #patinfo_occus
 #list of words/ strings associated with healthcare
-occupation<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=1) %>% select(patinfo_occus)
+# occupation<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=1) %>% select(patinfo_occus)
 #remove accents from occupation column
 big_data_clean<-data.table(big_data_clean)
 #Create a column that creates TRUE for health care worker after a match or partial match with list above
@@ -136,9 +136,9 @@ big_data_clean$hcw<- ifelse(is.na(big_data_clean$patinfo_occus),NA,big_data_clea
 
 #patcourse_status
 #list of words/ strings associated with dead or alive
-dead<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(dead) %>% na.omit()
-alive<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(alive) %>% na.omit()
-recovered<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(recovered) %>% na.omit()
+# dead<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(dead) %>% na.omit()
+# alive<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(alive) %>% na.omit()
+# recovered<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(recovered) %>% na.omit()
 #if missing patcourse_status make equal to patcurrent status
 big_data_clean$patcourse_status<-ifelse(is.na(big_data_clean$patcourse_status),big_data_clean$patcurrent_status,big_data_clean$patcourse_status)
 
@@ -181,10 +181,10 @@ big_data_clean$patcourse_datedischarge<-ifelse(big_data_clean$patcourse_status==
 
 
 #report classif
-probabale<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(probable) %>% na.omit()
-suspected<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(suspected) %>% na.omit()
-confirmed<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(confirmed) %>% na.omit()
-notacase<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(notacase) %>% na.omit()
+# probabale<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(probable) %>% na.omit()
+# suspected<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(suspected) %>% na.omit()
+# confirmed<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(confirmed) %>% na.omit()
+# notacase<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(notacase) %>% na.omit()
 
 #remove any numbers in there or special characters
 big_data_clean<-big_data_clean %>% mutate_at("report_classif",.funs=gsub,pattern="[0-9?]",replacement = NA, ignore.case = T, perl = T)
@@ -225,9 +225,9 @@ big_data_clean$report_classif<-ifelse(!grepl("suspected|probabale|confirmed|not 
 
 
 #labresult
-positive<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(positive) %>% na.omit()
-negative<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(negative) %>% na.omit()
-inconclusive<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(inconclusive) %>% na.omit()
+# positive<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(positive) %>% na.omit()
+# negative<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(negative) %>% na.omit()
+# inconclusive<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2) %>% select(inconclusive) %>% na.omit()
 #remove accents from status columns
 big_data_clean<-data.table(big_data_clean)
 big_data_clean<-big_data_clean[, lab_result := stringi::stri_trans_general(str = lab_result, id = "Latin-ASCII")]
@@ -263,7 +263,7 @@ big_data_clean$report_classif_alice<-big_data_clean$report_classif
 big_data_clean$report_classif_alice<-ifelse(big_data_clean$lab_result=="positive" & !is.na(big_data_clean$lab_result),"confirmed",big_data_clean$report_classif)
 
 #load in dictionary for linelists that are only the positves / confirmed cases
-linelist_pos<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=5)
+# linelist_pos<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=5)
 linelist_pos<-filter(linelist_pos,!is.na(linelist_pos$labresult))
 
 big_data_clean$report_classif_alice<-ifelse(is.na(big_data_clean$report_classif_alice),linelist_pos$classification[match(big_data_clean$country_iso, linelist_pos$country_iso)],big_data_clean$report_classif_alice)
@@ -271,8 +271,8 @@ big_data_clean$lab_result<-ifelse(is.na(big_data_clean$lab_result),linelist_pos$
 
 
 ###comorbidies
-comorbs<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=3)
-clean_noyes<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2)
+# comorbs<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=3)
+# clean_noyes<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=2)
 big_data_comorbs<-select(big_data_clean,contains("comcond"))
 big_data_comorbs$id<-rownames(big_data_comorbs)
 #partial string matches using above spreadsheet disctionary for each ncd, checking in both comcond columns
@@ -331,7 +331,7 @@ big_data_clean<-merge(big_data_clean,big_data_comorbs, by="id")
 
 
 ###capital city
-country<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=4)
+# country<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=4)
 #varible of country full name from aboove dictionary
 big_data_clean$country_full <- country$country_full[match(big_data_clean$country_iso, country$country_iso)]
 #add column that is the capital city
