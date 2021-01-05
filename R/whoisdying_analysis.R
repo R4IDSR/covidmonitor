@@ -45,7 +45,7 @@ mycolors <- colorRampPalette(brewer.pal(8, "PRGn"))(nb.cols)
 ###################################
 
 
-big_data_clean<-rio::import(here::here("inst/","Cleaned_linelist_2021-01-04.xlsx"), guess_max=100000) #guess max added to ensure integers are not read in as boolean
+big_data_clean<-rio::import(here::here("inst/","Cleaned_linelist_2021-01-05.xlsx"), guess_max=100000) #guess max added to ensure integers are not read in as boolean
 
 big_data_analyse<-dplyr::mutate(big_data_clean, across(contains("date"), as.Date, origin= "1899-12-30")) %>%
   filter(report_date<=as.Date("2020-10-30", origin= "1899-12-30"))

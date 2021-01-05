@@ -1,7 +1,7 @@
 library(dplyr)
 library(data.table)
 
-big_data<-rio::import(here::here("inst", "Merged_linelist_2021-01-04.xlsx"), readxl = FALSE)
+big_data<-rio::import(here::here("inst", "Merged_linelist_2021-01-05.xlsx"), readxl = FALSE)
 #import has for some reason lost the values in some columns (ageonsetdays), due to the read_excel that is used.
 #as the output from the merge file is a .xlsx we can specify readxl =FALSE so the read.xlsx function will be used on the import instead
 #the read.xlsx functions requires the dependancy openxlsx
