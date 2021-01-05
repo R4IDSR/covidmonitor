@@ -117,7 +117,8 @@ clean_dates <- function(x,
                                           "%Y-%m-%d","%y-%m-%d","%d-%m-%y",
                                           "%Y.%m.%d","%y.%m.%d","%d.%m.%y",
                                           "%Y/%m/%d","%y/%m/%d","%d/%m/%y",
-                                          "dBY","ymd HMS","Ymd HMS"))
+                                          "dBY", "dBY",
+                                          "ymd HMS","Ymd HMS"))
   )
 
   ## change back to normal date format because POSIXcT annoying downstream
