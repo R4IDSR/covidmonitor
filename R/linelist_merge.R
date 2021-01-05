@@ -12,14 +12,11 @@
 #' @importFrom rio import export
 #' @importFrom tidyr fill pivot_wider
 #' @importFrom matchmaker match_vec
-#' @importFrom dplyr bind_rows
-#' @importFrom dplyr mutate filter select
+#' @importFrom dplyr bind_rows mutate filter select across
 #' @importFrom janitor clean_names
 #' @importFrom stringi stri_trans_general
 #' @author Alice Carr, Alex Spina
 #' @export
-
-library(dplyr) #still have this here because across not supported in standard dplyr ?
 
 #the inputs that i have been using
 # inputdirectory <- "inst/extdata/frank_linelists_uptaded_2020-01-04//"
@@ -29,55 +26,69 @@ library(dplyr) #still have this here because across not supported in standard dp
 
 merge_linelist <- function(inputdirectory,
                            outputdirectory = tempdir(),
-                           outputname = "Merged_linelist_", isotomerge = "AFRO") {
+                           outputname = "Merged_linelist_",
+                           isotomerge = "AFRO") {
+
+  ## TODO define param isotomerge above (also unify with merge_kpi params)
+  # define countries in AFRO
   if (isotomerge == "AFRO") {
-    isolist <- c("BFA", "CIV", "COD", "COG", "DZA", "GIN", "KEN", "LBR", "MOZ", "MUS", "NAM", "NER", "RWA", "SEN", "SLE", "STP", "SWZ", "SYC", "TCD", "UGA", "ZWE")
+    isolist <- c("BFA", "CIV", "COD", "COG", "DZA", "GIN", "KEN", "LBR", "MOZ",
+                 "MUS", "NAM", "NER", "RWA", "SEN", "SLE", "STP", "SWZ", "SYC",
+                 "TCD", "UGA", "ZWE")
   } else {
+    # if not reading all of afro then specify which
     isolist <- isotomerge
   }
 
-  files <- base::list.files(path = inputdirectory, full.names = TRUE, pattern = paste(isolist, collapse = "|"))
+  # only list the files of interest
+  files <- list.files(path = inputdirectory,
+                      full.names = TRUE,
+                      pattern = paste(isolist, collapse = "|"))
 
+  ## TODO delete this bit (specify that file needs to exist already)
   # create folder for output
-  base::dir.create(outputdirectory, showWarnings = FALSE)
+  dir.create(outputdirectory, showWarnings = FALSE)
 
-  # read in dictionary for renaming variables contry specific sheet
+  # read in dictionary for renaming variables country specific sheet
   var_dict <- rio::import(
-    # system.file(
-    here::here("inst", "extdata", "linelist_dictionary.xlsx"),
-    # package = "covidmonitor"),
+    system.file("extdata", "linelist_dictionary.xlsx",
+    package = "covidmonitor"),
     which = 1
   )
+
+  # clean variable names for dicationary
   var_dict <- janitor::clean_names(var_dict)
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r"), gsub, pattern = "\\s+$", replacement = "_")) # cleaning old variable names from unwanted regex patterns
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r"), gsub, pattern = "\\s+", replacement = "_"))
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r"), gsub, pattern = "'", replacement = ""))
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r"), gsub, pattern = "[[:punct:]]",replacement ="_"))
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r"), gsub, pattern = "\\_+", replacement = "_"))
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r"), gsub, pattern = "\\_$", replacement = ""))
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r"), gsub, pattern = "^\\_", replacement = ""))
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r"), gsub, pattern = "([a-z])([A-Z])",replacement = "\\1_\\2"))
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r"), gsub, pattern = "([A-Z])([A-Z])([a-z])",replacement = "\\1_\\2\\3"))
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r", "new_var"), tolower))
-  var_dict <- dplyr::mutate(var_dict, across(c("old_var_r", "new_var"), stringi::stri_trans_general, "Latin-ASCII")) # cleaning old variable names replacing all spaces and punctuation with . (as this is dont on the variable names upon loading files)
+  # cleaning old variable names from unwanted regex patterns
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "\\s+$", replacement = "_"))
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "\\s+", replacement = "_"))
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "'", replacement = ""))
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "[[:punct:]]",replacement ="_"))
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "\\_+", replacement = "_"))
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "\\_$", replacement = ""))
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "^\\_", replacement = ""))
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "([a-z])([A-Z])",replacement = "\\1_\\2"))
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "([A-Z])([A-Z])([a-z])",replacement = "\\1_\\2\\3"))
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r", "new_var"), tolower))
+  ## TODO swap stringi for base::iconv (apparently doesnt work for macs) - also do for other instances
+  # cleaning old variable names replacing all spaces and punctuation with . (as this is dont on the variable names upon loading files)
+  var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r", "new_var"), stringi::stri_trans_general, "Latin-ASCII"))
 
 
   # read in template and sheet checking dictionary
   template_check <- rio::import(
-    # system.file(
-    here::here("inst", "extdata", "linelist_dictionary.xlsx"),
-    # package = "covidmonitor")
+    system.file("extdata", "linelist_dictionary.xlsx",
+    package = "covidmonitor"),
     which = 3
   )
   template_check <- janitor::clean_names(template_check)
 
-
+  # read in variables of interest
   variables_to_keep <- rio::import(
-    # system.file(
-    here::here("inst", "extdata", "linelist_dictionary.xlsx"),
-    # package = "covidmonitor"),
+    system.file("extdata", "linelist_dictionary.xlsx",
+    package = "covidmonitor"),
     which = 4
   )
+
   variables_to_keep <- janitor::clean_names(variables_to_keep)
 
   # create an empty list to fill in with datasets
@@ -85,11 +96,12 @@ merge_linelist <- function(inputdirectory,
 
 
   # for each file listed in input directory:
-  for (f in 1:base::length(files)) {
+  for (f in 1:length(files)) {
     # ISO codes of country file
     iso <- substr(tools::file_path_sans_ext(basename(files[f])), 0, 3)
-    warning(paste(iso, "processing"))
-    print(iso) #here for debugging
+    ## TODO add a more informative warning about which ISO is making loop fail
+    # warning(paste(iso, "processing"))
+    # print(iso) #here for debugging
 
     # for this iso code set parameters dictating file load in and clean process using the template_check dictionary
     sheetname <- template_check$sheetname[template_check$country == iso]
@@ -97,11 +109,15 @@ merge_linelist <- function(inputdirectory,
     template <- template_check$template[template_check$country == iso]
 
     # load in file
-    # files that are xlsb (CIV) cannot be open (easily on mac) for ease resave the file in an xlsx format, this can be edited to use the RODBC package which i think works on windows
+    # files that are xlsb (CIV) cannot be open (easily on mac)
+    # for ease resave the file in an xlsx format,
+    #  this can be edited to use the RODBC package which i think works on windows
     if (grepl(files[f], pattern = "\\.xlsb$", ignore.case = TRUE)) {
+      ## TODO past whole file name not just the iso (because this are all AFRO as ISO!)
       warning(paste(iso, "file is in xlsb format, please resave file in xlsx format before proceeding"))
     } else {
-      og_sheet <- rio::import(files[f], which = sheetname, skip = skip, guess_max=10000000) #guess max to ensure no cells are missing when reading in if many empty columns preceeded
+      #guess max to ensure no cells are missing when reading in if many empty columns preceeded
+      og_sheet <- rio::import(files[f], which = sheetname, skip = skip, guess_max = 10000000)
     }
 
     # clean variable names to removed unwated regex patterns, replace all spaces with a ., inorder to match var_dict dictionary
@@ -109,33 +125,37 @@ merge_linelist <- function(inputdirectory,
     names(og_sheet) <- stringi::stri_trans_general(names(og_sheet), "Latin-ASCII")
     names(og_sheet) <- sub(names(og_sheet), pattern = "(^[x0-9]{1})",replacement = "")
 
-    og_sheet <- dplyr::mutate(og_sheet, across(c(-1), stringi::stri_trans_general, "Latin-ASCII"))
-    og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "['?]", replacement = "", ignore.case = T, perl = T))
-    og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "\r\n", replacement = "", fixed = T))
-    og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "\\s+", replacement = " ", ignore.case = T))
-    og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "\\s+$", replacement = "", ignore.case = T))
-    og_sheet <- dplyr::mutate(og_sheet, across(c(-1), gsub, pattern = "(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$|(?i)^Unk$|(?i)^NP$", replacement = NA, perl = T))
+    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), stringi::stri_trans_general, "Latin-ASCII"))
+    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "['?]", replacement = "", ignore.case = T, perl = T))
+    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "\r\n", replacement = "", fixed = T))
+    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "\\s+", replacement = " ", ignore.case = T))
+    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "\\s+$", replacement = "", ignore.case = T))
+    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$|(?i)^Unk$|(?i)^NP$", replacement = NA, perl = T))
     # must keep this pattern all one line or doesnt work
 
-    names(og_sheet) <- gsub(x= names(og_sheet),pattern ="\r\n",replacement = "", fixed = T)
-    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+", replacement =" ")
-    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+$", replacement ="")
-    names(og_sheet) <-gsub(x= names(og_sheet),pattern ="\\s+|[[:punct:]]", replacement ="_")
-    names(og_sheet) <-tolower(names(og_sheet))
-    names(og_sheet)<- stringi::stri_trans_general(names(og_sheet) , "Latin-ASCII")
+    names(og_sheet) <- gsub(x = names(og_sheet), pattern ="\r\n",replacement = "", fixed = T)
+    names(og_sheet) <- gsub(x = names(og_sheet), pattern ="\\s+", replacement =" ")
+    names(og_sheet) <- gsub(x = names(og_sheet), pattern ="\\s+$", replacement ="")
+    names(og_sheet) <- gsub(x = names(og_sheet), pattern ="\\s+|[[:punct:]]", replacement ="_")
+    names(og_sheet) <- tolower(names(og_sheet))
+    names(og_sheet) <- stringi::stri_trans_general(names(og_sheet) , "Latin-ASCII")
 
     # filter variable cleaning dictionary specific to country file loaded
     var_dict_country <- dplyr::filter(var_dict, country == iso)
     var_dict_country <- var_dict_country[var_dict_country$old_var_r %in% names(og_sheet), ]
 
-        # list variables to drop that are non-template
-    drop_nontemplate_vars <- var_dict_country$old_var_r[var_dict_country$notes == "non_template" & !is.na(var_dict_country$notes)]
+    # list variables to drop that are non-template
+    drop_nontemplate_vars <- var_dict_country$old_var_r[var_dict_country$notes == "non_template" &
+                                                          !is.na(var_dict_country$notes)]
 
 
     # drop variables from dataframe which are non-tmeplate
     if (length(drop_nontemplate_vars) != 0) {
       og_sheet <- og_sheet[, !(names(og_sheet) %in% drop_nontemplate_vars)]
-      warning(paste(iso, "\n Non-template variables dropped:", paste(drop_nontemplate_vars, collapse = ","), "\n Epi-week:", Sys.Date()))
+      ## TODO: add a better identifier than Sys.Date for epiweek
+      warning(paste(iso, "\n Non-template variables dropped:",
+                    paste(drop_nontemplate_vars, collapse = ","),
+                    "\n Epi-week:", Sys.Date()))
     }
 
     # if file requires no cleaning as matched WHO standard template do this loop
@@ -145,20 +165,32 @@ merge_linelist <- function(inputdirectory,
       # If file needs recoding of variables/merging of variables
     } else if (template == FALSE) {
       # recode variables
-      recode_vars <- var_dict_country$old_var_r[grepl("Recode", var_dict_country$notes) & !is.na(var_dict_country$notes)]
+      recode_vars <- var_dict_country$old_var_r[grepl("Recode",
+                                                      var_dict_country$notes) &
+                                                  !is.na(var_dict_country$notes)]
 
       if (length(recode_vars) != 0) {
-        # these variables are usually patinfo_occus (proffession), comcond_exist (pre exsiting medical) and patsympt_other (other symptoms which have often been split into separate variables)
-        variable_to <- sub("Recode to ", "", as.list(var_dict_country$notes[grepl("Recode", var_dict_country$notes) & !is.na(var_dict_country$notes)]))
+        # these variables are usually patinfo_occus (proffession),
+        # comcond_exist (pre exsiting medical) and
+        # patsympt_other (other symptoms which have often been split into separate variables)
+        variable_to <- sub("Recode to ", "",
+                           as.list(var_dict_country$notes[grepl("Recode",
+                                                                var_dict_country$notes) &
+                                                            !is.na(var_dict_country$notes)]))
         what_to_match <- unique(variable_to)
+        ## TODO: add country and epiweek identifier to warnings
         warning(paste("Recoding variables:", paste(recode_vars, collapse = ","), "\n \n Recoding to:", paste(what_to_match, collapse = ",")))
 
         recode_sheet <- og_sheet[, which(names(og_sheet) %in% recode_vars)]
         # remove the columns that required recoding from original sheet
-        output_sheet<- select(og_sheet,-c(contains(recode_vars)))
+        output_sheet<- dplyr::select(og_sheet,-c(dplyr::contains(recode_vars)))
 
-        # remove following instances from variable names that need recoding for the next step to leave what will become the recoded value
-        names(recode_sheet) <- gsub(x = names(recode_sheet), pattern = "COVID.|Co19.|comcond.|patsympt.|patinfo.|COVID_19_", replacement = "", ignore.case = T)
+        # remove following instances from variable names that need recoding for
+        # the next step to leave what will become the recoded value
+        names(recode_sheet) <- gsub(x = names(recode_sheet),
+                                    pattern = "COVID.|Co19.|comcond.|patsympt.|patinfo.|COVID_19_",
+                                    replacement = "",
+                                    ignore.case = T)
 
         # replace all instances of no with missing
         recode_sheet <- data.frame(lapply(recode_sheet, function(x) {
@@ -170,13 +202,19 @@ merge_linelist <- function(inputdirectory,
         }), stringsAsFactors = F)
 
         # where all instances were 1 (yes) recode to the name of the variable for merge
-        recode_sheet <- data.frame(sapply(names(recode_sheet), function(x) ifelse(recode_sheet[, x] == 1, x, recode_sheet[, x])), stringsAsFactors = F)
+        recode_sheet <- data.frame(sapply(names(recode_sheet), function(x)
+          ifelse(recode_sheet[, x] == 1, x, recode_sheet[, x])), stringsAsFactors = F)
         colnames(recode_sheet) <- gsub("^X", "",  colnames(recode_sheet))
 
         # renames variables with key of what to code to
-        recode_vars <- gsub(x =recode_vars, pattern = "COVID.|Co19.|comcond.|patsympt.|patinfo.|COVID_19_", replacement = "", ignore.case = T)
+        recode_vars <- gsub(x =recode_vars,
+                            pattern = "COVID.|Co19.|comcond.|patsympt.|patinfo.|COVID_19_",
+                            replacement = "", ignore.case = T)
+        ## TODO find replacement for data.table function
         # above line present as this step was done to the variables in recode sheet
-        recode_sheet<-setnames(recode_sheet,old=c(recode_vars),new=c(paste(recode_vars, variable_to, sep = ".")))
+        recode_sheet <- data.table::setnames(recode_sheet,
+                               old = c(recode_vars),
+                               new = c(paste(recode_vars, variable_to, sep = ".")))
 
         # concatenate all common variables using split method, method now not dependant on data.table
         recode_sheet[names(base::split.default(recode_sheet, sub(".*\\.", "", names(recode_sheet))))] <-
@@ -201,12 +239,13 @@ merge_linelist <- function(inputdirectory,
         colnames(recode_sheet) <- gsub("^X", "",  colnames(recode_sheet))
         recode_sheet <- recode_sheet[, which(names(recode_sheet) %in% c(what_to_match, "id"))]
 
+        ## TODO at this point there are names that are NA! throws and error need to fix
         # match old variable names with dictionary for new variable names
         names(output_sheet) <- with(var_dict_country, new_var[match(names(output_sheet), old_var_r)])
         # cbind with newly recoded variables
         output_sheet$id <- rownames(output_sheet) # create an id variable for when merging back to og sheet occurs
         output_sheet <- merge(output_sheet, recode_sheet, by = "id")
-        output_sheet <- select(output_sheet,-c(id))
+        output_sheet <- dplyr::select(output_sheet, -c(id))
 
         # if there are no variables that needed recoding just match old variable names with dictionary for new variable names
       } else {
@@ -215,6 +254,7 @@ merge_linelist <- function(inputdirectory,
       }
     }
 
+    ## TODO swap out for clean dates function
     # handle dates that are numeric. All character dates -> NA.
     # Convert to numeric and change date format using origin of excel
     # Convert to character date for final merge
@@ -260,7 +300,7 @@ merge_linelist <- function(inputdirectory,
     # remove rows where all columns except ID is missing or if case id is missing
     output_sheet$na_rows <- rowSums(!is.na(output_sheet))
     output_sheet <- dplyr::filter(output_sheet, !is.na(patinfo_id) | na_rows > 1)
-    output_sheet <- select(output_sheet,-c(na_rows))
+    output_sheet <- dplyr::select(output_sheet,-c(na_rows))
     # make variable names lower case for output sheet
     names(output_sheet) <- tolower(names(output_sheet))
 
@@ -271,8 +311,9 @@ merge_linelist <- function(inputdirectory,
     varstokeep <- variables_to_keep$variable
     output_sheet$id <- rownames(output_sheet)
 
+    ## TODO switch to base
     # find variables not present
-    cols <- setdiff(varstokeep, vars)
+    cols <- data.table::setdiff(varstokeep, vars)
 
     if (length(grep("patsympt", vars)) == 0) {
       cols <- c(cols, "patsympt_other")
@@ -282,20 +323,24 @@ merge_linelist <- function(inputdirectory,
     if (length(cols != 0)) {
       for (v in cols) {
         output_sheet[[v]] <- NA
+        ## TODO add country and week identifiers
         warning(paste("Creating variables not present:", paste(cols, collapse =",")))
       }
     } else {
+      ## TODO Dont think need this warning
       warning("All variables of interest present")
     }
 
 
     # make column for ISO code
     output_sheet$country_iso <- iso
+    ## TODO remove (shouldnt be necessary to do again?)
     #change all date columns
-    output_sheet <- mutate(output_sheet, across(contains("date"), as.Date, origin = "1899-12-30"))
+    output_sheet <- mutate(output_sheet, dplyr::across(contains("date"), as.Date, origin = "1899-12-30"))
     # some ages had issues on and wouldnt merge
-    output_sheet$patinfo_ageonset <- as.numeric(base::iconv(output_sheet$patinfo_ageonset, "utf-8", "ascii", sub = ""))
+    output_sheet$patinfo_ageonset <- as.numeric(iconv(output_sheet$patinfo_ageonset, "utf-8", "ascii", sub = ""))
 
+    ## TODO swap for the variables defined in dictionary
     # keep variables of interest
     output_sheet <- dplyr::select(
       output_sheet,patinfo_id, report_date, patinfo_ageonset, patinfo_ageonsetunit, patinfo_ageonsetunitdays,
@@ -321,9 +366,8 @@ merge_linelist <- function(inputdirectory,
   big_data <- big_data[order(big_data$country_iso), ]
 
   rio::export(big_data,
-    # system.file(
-    file=here::here(outputdirectory, paste0(outputname, Sys.Date(), ".xlsx"))
-    # package = "covidmonitor"),
-  )
+    ## TODO fix to remove here::here and have specified by user
+    file = here::here(outputdirectory,
+                      paste0(outputname, Sys.Date(), ".xlsx")))
 
 }
