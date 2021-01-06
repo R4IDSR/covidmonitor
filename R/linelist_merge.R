@@ -151,9 +151,10 @@ merge_linelist <- function(inputdirectory,
     # TODO files that are xlsb (CIV) cannot be open (easily on mac)
     # for ease resave the file in an xlsx format,
     #  this can be edited to use the RODBC package which i think works on windows
-    if (grepl(files[f], pattern = "\\.xlsb$", ignore.case = TRUE)) {
-      warning(paste("Following file is in xlsb format, please resave file in xlsx format before proceeding: \n",
+    if (grepl(files[f], pattern = "\\.xlsb$|\\.xlsm$", ignore.case = TRUE)) {
+      warning(paste("Following file is in xlsb or xlsm format, please resave file in xlsx format before proceeding: \n",
                     basename(files[f])))
+      next
     } else {
       # guess max to ensure no cells are missing when reading in if many empty columns preceeded
       og_sheet <- rio::import(files[f], which = sheetname, skip = skip, guess_max = 10000000)
@@ -307,10 +308,14 @@ merge_linelist <- function(inputdirectory,
     }
 
     ########
+    # define date variables
+    DATEVARS <- names(output_sheet)[grep("Date",
+                                         names(output_sheet), ignore.case = TRUE)]
+
     # fix dates (see ?clean_dates details for method)
     output_sheet <- dplyr::mutate(output_sheet,
                                dplyr::across(
-                                 dplyr::contains("Date", ignore.case = TRUE),
+                                 dplyr::all_of(DATEVARS),
                                  covidmonitor::clean_dates))
 
 
@@ -375,5 +380,8 @@ merge_linelist <- function(inputdirectory,
 
   # write file
   rio::export(big_data, file = filename)
+
+  # return merged dataset
+  big_data
 
 }
