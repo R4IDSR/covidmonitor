@@ -47,7 +47,7 @@ mycolors2 <- colorRampPalette(brewer.pal(8, "Set1"))(nb.cols)
 
 big_data_clean<-rio::import(here::here("inst/","Cleaned_linelist_2021-01-06.xlsx"), guess_max=100000) #guess max added to ensure integers are not read in as boolean
 
-big_data_analyse<-dplyr::mutate(big_data_clean, across(contains("date"), as.Date, origin= "1899-12-30")) %>%
+big_data_analyse<-dplyr::mutate(big_data_clean, across(c("patcourse_datedeath","patcourse_datedischarge"), as.Date, origin= "1970-01-01")) %>%
   filter(report_date<=as.Date("2020-10-30", origin= "1899-12-30"))
 
 #remove countries that dont have up until the 2020-10-31
@@ -64,11 +64,52 @@ big_data_analyse$patcourse_status<-ifelse(big_data_analyse$country_iso=="GIN" & 
 
 #only include confirmed cases
 big_data_analyse<- big_data_analyse %>% filter(report_classif_alice=="confirmed")
+#correcting if any "men" with pregancy entered into their comorbs
+big_data_analyse$pregnancy<-ifelse(big_data_analyse$patinfo_sex=="M" & big_data_analyse$pregnancy==1,NA,big_data_analyse$pregnancy)
+
+#ensuring only those not missing have this variable corrrect
+big_data_analyse$capital_final<-ifelse(is.na(big_data_analyse$patinfo_resadmin1), NA, big_data_analyse$capital_final)
+
+
+big_data_analyse<-dplyr::mutate(big_data_analyse, across(c(diabetes, asthma, hypertension,cancer,
+                                                           renal_disease,cardiovascular_disease,obesity,tuberculosis,drepanocytosis,chronic_pulmonary), as.numeric))
+
+big_data_analyse$comcond_preexsist_count_top10<-rowSums(select(ungroup(big_data_analyse), c(diabetes, asthma, hypertension,cancer,
+                                                                                            renal_disease,cardiovascular_disease,obesity,tuberculosis,drepanocytosis,chronic_pulmonary)), na.rm = T)
 
 
 
-timetodeath<-big_data_analyse %>% filter(!is.na(patcourse_dateonset) & !is.na(patcourse_datedeath)) %>% group_by(country_iso,country_full) %>%
-  summarise(total=length(patcourse_datedeath))
+###########################
+#time to death analysis need to make missing problem dates entered in wrong for lab taken date date of death and date of date discharge
+timetodeath<-ungroup(big_data_analyse)
+timetodeath$lab_datetaken <- if_else(timetodeath$lab_datetaken< as.Date("2020-01-01") | timetodeath$lab_datetaken> as.Date(Sys.Date()),as.Date(NA),timetodeath$lab_datetaken)
+timetodeath$patcourse_datedeath <- if_else(timetodeath$patcourse_datedeath< as.Date("2020-01-01") | timetodeath$patcourse_datedeath> as.Date(Sys.Date()),as.Date(NA),timetodeath$patcourse_datedeath)
+timetodeath$patcourse_datedischarge <- if_else(timetodeath$patcourse_datedischarge< as.Date("2020-01-01") | timetodeath$patcourse_datedischarge> as.Date(Sys.Date()),as.Date(NA),timetodeath$patcourse_datedischarge)
+
+#use this df in the time to death analysis
+timetodeath_numbers<-timetodeath %>% filter(!is.na(lab_resdate) & !is.na(patcourse_status))
+timetodeath_numbers$startdate<-timetodeath_numbers$lab_resdate
+timetodeath_numbers$enddate<-dplyr::if_else(timetodeath_numbers$patcourse_status=="dead",timetodeath_numbers$patcourse_datedeath,timetodeath_numbers$patcourse_datedischarge)
+timetodeath_numbers$enddate<-dplyr::if_else(timetodeath_numbers$patcourse_status=="alive" & is.na(timetodeath_numbers$enddate),as.Date("2020-10-30", origin= "1970-01-01"),timetodeath_numbers$enddate)
+timetodeath_numbers<-timetodeath_numbers %>% filter(startdate<=as.Date("2020-10-30", origin= "1899-12-30") & enddate<=as.Date("2020-10-30", origin= "1899-12-30"))
+timetodeath_numbers$comcond_preexist1_alice_binary<-ifelse(!is.na(timetodeath_numbers$comcond_preexist1_alice) & timetodeath_numbers$comcond_preexist1_alice=="yes",1,
+                                                           ifelse(is.na(timetodeath_numbers$comcond_preexist1_alice),NA,0)) #this would still include UGA and STP in this as makes all not given=0
+timetodeath_numbers$hcw_binary<-ifelse(!is.na(timetodeath_numbers$hcw) & timetodeath_numbers$hcw=="TRUE",1,0)
+timetodeath_numbers$capital_final_binary<-ifelse(!is.na(timetodeath_numbers$capital_final) & timetodeath_numbers$capital_final=="TRUE",1,
+                                                 ifelse(is.na(timetodeath_numbers$capital_final),NA,0))
+timetodeath_numbers$pregant_binary<-ifelse(is.na(timetodeath_numbers$pregnancy) & timetodeath_numbers$patinfo_sex=="F",0,timetodeath_numbers$pregnancy)
+timetodeath_numbers$patinfo_sex_binary<-ifelse(!is.na(timetodeath_numbers$patinfo_sex) & timetodeath_numbers$patinfo_sex=="M",1,
+                                               ifelse(is.na(timetodeath_numbers$patinfo_sex),NA,0))
+
+#define failure
+timetodeath_numbers$vlfail<-ifelse(timetodeath_numbers$patcourse_status=="dead",1,0)
+#Create person time variable (observation time)
+timetodeath_numbers$perstime <- as.numeric((timetodeath_numbers$enddate - timetodeath_numbers$startdate) / 365.25)
+timetodeath_numbers<- timetodeath_numbers %>% filter(timetodeath_numbers$perstime>0)
+#Add the survial object as variable to your dataset which is survival time (for kaplan-meier and cox)
+timetodeath_numbers$SurvObj <- with(timetodeath_numbers, survival::Surv(time = perstime, event = vlfail))
+#################
+
 
 all<- big_data_analyse %>% mutate(hcw_all=ifelse(grepl("confirmed",report_classif_alice, ignore.case = T) & grepl("TRUE", hcw, ignore.case = T),1,0)) %>%
   group_by(country_iso,country_full) %>%
@@ -238,20 +279,11 @@ ncd_type<-do.call("rbind",list(diabetes,hta,asthma,cvd,cancer, obesity,tb,pd,rd,
   mutate(CFR=round((dead/confirmed)*100, digits = 2))
 
 
-big_data_analyse<-dplyr::mutate(big_data_analyse, across(c(diabetes, asthma, hypertension,cancer,
-                                                            renal_disease,cardiovascular_disease,obesity,tuberculosis,drepanocytosis,chronic_pulmonary), as.numeric))
-
-big_data_analyse$comcond_preexsist_count_top10<-rowSums(select(ungroup(big_data_analyse), c(diabetes, asthma, hypertension,cancer,
-                                                                             renal_disease,cardiovascular_disease,obesity,tuberculosis,drepanocytosis,chronic_pulmonary)), na.rm = T)
 
 ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% group_by(as.factor(comcond_preexsist_count_top10)) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                              dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                              alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(CFR=round((dead/confirmed)*100, digits = 2))
-
-#looking at asthma diabetes hta only and comparing to if having singlar vs that +one other ?
-
-
 
 
 #plotting
@@ -288,7 +320,7 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
   ncd_type_long<- ncd_type %>% tidyr::pivot_longer(c(dead,alive), names_to= "dead/alive")
   cfr_labels<- ncd_type_long %>% select(c("co-morbidity","CFR")) %>% unique(.)
 
-  g5<-ncd_type_long %>% ggplot(aes(factor(`co-morbidity`,levels=`co-morbidity`[`dead/alive`=="dead"][order(value[`dead/alive`=="dead"])]), value, fill=`dead/alive`, group=`dead/alive`)) + geom_bar(aes(fill=as.factor(`dead/alive`)),stat="identity", show.legend = T) +
+  g6<-ncd_type_long %>% ggplot(aes(factor(`co-morbidity`,levels=`co-morbidity`[`dead/alive`=="dead"][order(value[`dead/alive`=="dead"])]), value, fill=`dead/alive`, group=`dead/alive`)) + geom_bar(aes(fill=as.factor(`dead/alive`)),stat="identity", show.legend = T) +
     pub_theme4 + theme(axis.text.x=element_text(angle=0)) + scale_fill_manual(values = mycolors2[c(3,1)]) +
     coord_flip() + labs(y="Number of cases", x= "Co-morbidity", fill="Outcome") +   geom_text(data=cfr_labels,aes(x=`co-morbidity`,y=1400,label=paste0("CFR= ",round(CFR, digits = 1), "%"),fontface= 2),
                                                                                               inherit.aes=FALSE, size=8,angle=0,hjust=1)
@@ -300,11 +332,15 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
  hcw_long<- hcw %>%  tidyr::pivot_longer(c(dead,alive), names_to= "dead/alive")
  cfr_hcw_labels<- hcw_long %>% select(c("country_iso","CFR")) %>% unique(.)
 
-  g6<-hcw_long %>% ggplot(aes(factor(country_iso,levels=country_iso[`dead/alive`=="dead"][order(value[`dead/alive`=="dead"])]), value, fill=`dead/alive`, group=`dead/alive`)) + geom_bar(stat="identity", width=.5, position = "stack") +
+  g7<-hcw_long %>% ggplot(aes(factor(country_iso,levels=country_iso[`dead/alive`=="dead"][order(value[`dead/alive`=="dead"])]), value, fill=`dead/alive`, group=`dead/alive`)) + geom_bar(stat="identity", width=.5, position = "stack") +
     pub_theme4 + theme(axis.text.x=element_text(angle=0)) + scale_fill_manual(values = mycolors2[c(3,1)]) + labs(y="Number of cases", x= "Country", fill="Outcome")
 
   ggsave("whoisddying_manuscript/hcw_cfr_barplot.png", width=20, height = 15)
 
 
 
+###### cox regression time ot death
+#dataset used in failure
+  failure<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, pregant_binary,SurvObj)
+  flextable::save_as_docx(gtsummary::as_flex_table(gtsummary::tbl_uvregression(failure,survival::coxph,y=SurvObj, exponentiate = T)),path="whoisddying_manuscript/HR.docx")
 
