@@ -2,12 +2,14 @@
 #'
 #' @param inputdirectory path to folder containing datasets
 #'
-#' @param outputdirectory path to folder where merged file is to be saved
+#' @param outputdirectory path to folder where merged file is to be saved (must exist already)
 #'
 #' @param outputname character string to name merged file
 #'
-#' @param template logical (TRUE/FALSE) of whether the input data frame fits
-#' the standard template
+#' @param isotomerge 3 letter ISO-code for country of interest, in quotation marks,
+#' combine multiple countries with c(...), default is "AFRO" to read in all available.
+#' See details for countries currently supported.
+#'
 #'
 #' @importFrom rio import export
 #' @importFrom tidyr fill pivot_wider
@@ -15,9 +17,18 @@
 #' @importFrom dplyr bind_rows mutate filter select across
 #' @importFrom janitor clean_names
 #' @importFrom stringi stri_trans_general
+#'
+#' @details
+#' Countries currently supported include:
+#' "BFA", "CIV", "COD", "COG", "DZA", "GIN", "KEN", "LBR", "MOZ",
+#' "MUS", "NAM", "NER", "RWA", "SEN", "SLE", "STP", "SWZ", "SYC",
+#' "TCD", "UGA", "ZWE"
+#'
 #' @author Alice Carr, Alex Spina
+#'
 #' @export
 
+## TODO delete this
 #the inputs that i have been using
 # inputdirectory <- "inst/extdata/frank_linelists_uptaded_2020-01-04//"
 # outputdirectory <- "inst/"
@@ -42,12 +53,33 @@ merge_linelist <- function(inputdirectory,
 
   # only list the files of interest
   files <- list.files(path = inputdirectory,
-                      full.names = TRUE,
-                      pattern = paste(isolist, collapse = "|"))
+                      full.names = TRUE)
 
-  ## TODO delete this bit (specify that file needs to exist already)
-  # create folder for output
-  dir.create(outputdirectory, showWarnings = FALSE)
+  ## chuck an error if ISO Code wrong
+  if (length(files) == 0) {
+    stop("No files found, check the country codes are correct (3 letters)")
+  }
+
+  # add in a catch for files not processed properly (default is that these are
+  # labelled AFRO) - drop with a warning
+
+  # define which files dont start with a 3 letter iso code
+  # i.e. the fourth letter is a not a dot
+  droppers <- substr(basename(files), 4, 4) != "." |
+    substr(basename(files), 0, 3) == "---"
+
+  # if there are any to drop then throw a warning saying which
+  if (sum(droppers) > 0) {
+    warning(paste("Dropping incorrectly named files: \n",
+                   paste0(basename(files)[droppers], collapse = "\n")))
+  }
+
+  # only keep the files not identified for dropping
+  files <- files[!droppers]
+
+  # only keep countries of interest
+  files <- files[substr(basename(files), 0, 3) %in% isolist]
+
 
   # read in dictionary for renaming variables country specific sheet
   var_dict <- rio::import(
@@ -56,7 +88,7 @@ merge_linelist <- function(inputdirectory,
     which = 1
   )
 
-  # clean variable names for dicationary
+  # clean variable names for dictionary
   var_dict <- janitor::clean_names(var_dict)
   # cleaning old variable names from unwanted regex patterns
   var_dict <- dplyr::mutate(var_dict, dplyr::across(c("old_var_r"), gsub, pattern = "\\s+$", replacement = "_"))
