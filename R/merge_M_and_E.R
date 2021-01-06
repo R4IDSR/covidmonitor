@@ -589,7 +589,7 @@ merge_kpi <- function(inputdirectory,
 
   ## output file
   # define path to output to
-  filename <- base::paste0(outputdirectory,"/",outputname,".xlsx")
+  filename <- paste0(outputdirectory,"/", outputname, Sys.Date(), ".xlsx")
   # write file
   rio::export(output, file = filename)
 
