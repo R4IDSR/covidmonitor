@@ -20,10 +20,10 @@ library(linelist)
 ##################################
 #Initialise Theme for plotting
 pub_theme4 <- theme(text=element_text(family="Arial"),
-                    axis.text.x=element_text(size=20,angle=45,color="black", vjust=0.5, hjust=0.5),
-                    axis.text.y=element_text(size=20,color="black"),
-                    axis.title.y=element_text(size=22,face="bold",color="black"),
-                    axis.title.x=element_text(size=22,face="bold",color="black"),
+                    axis.text.x=element_text(size=24,angle=45,color="black", vjust=0.5, hjust=0.5),
+                    axis.text.y=element_text(size=24,color="black"),
+                    axis.title.y=element_text(size=26,face="bold",color="black"),
+                    axis.title.x=element_text(size=26,face="bold",color="black"),
                     panel.grid.major.y=element_line(size=.5, color="gray", linetype = "solid"),
                     panel.grid.major.x = element_blank(),
                     panel.grid.minor.x = element_blank(),
@@ -32,8 +32,8 @@ pub_theme4 <- theme(text=element_text(family="Arial"),
                     axis.line=element_line(colour="black"),legend.position = "bottom",
                     legend.direction = "horizontal",
                     legend.key.size= unit(0.4, "cm"),
-                    legend.title = element_text(size=22,face="bold.italic"),
-                    legend.text=element_text(size=20, face="italic"),
+                    legend.title = element_text(size=26,face="bold.italic"),
+                    legend.text=element_text(size=24, face="italic"),
                     #panel.border=element_rect(colour="black", fill=NA, size=1),
                     plot.margin=unit(c(0.2,0.2,0.2,0.2),"in"))
 
@@ -46,30 +46,37 @@ mycolors2 <- colorRampPalette(brewer.pal(8, "Set1"))(nb.cols)
 
 
 big_data_clean<-rio::import(here::here("inst/","Cleaned_linelist_2021-01-06.xlsx"), guess_max=100000) #guess max added to ensure integers are not read in as boolean
+big_data_analyse<-big_data_clean
+###########Filtering the data set ###########
 
-big_data_analyse<-dplyr::mutate(big_data_clean, across(c("patcourse_datedeath","patcourse_datedischarge"), as.Date, origin= "1970-01-01")) %>%
-  filter(report_date<=as.Date("2020-10-30", origin= "1899-12-30"))
+#define date we are reporting to
+dateofreport<-as.Date("2020-10-29", origin= "1899-12-30")
+#filter for cases before dateofreport variable ie 29/10/2020
 
-#remove countries that dont have up until the 2020-10-31
-big_data_analyse<- big_data_analyse %>% group_by(country_iso) %>% mutate(lastreport_oct31 =ifelse(max(report_date)==as.Date("2020-10-30", origin= "1899-12-30"),1,0))
-big_data_analyse<- big_data_analyse %>% group_by(country_iso) %>% filter(lastreport_oct31==1)
-
-big_data_analyse$agegroup<- cut(big_data_analyse$patinfo_ageonset, breaks = c(0, 15, 25, 35, 45, 55,65,75,Inf), right = FALSE,labels = c("< 15 years", "15-24 years","25-34 years","35-44 years","45-54 years","55-64 years","65-74 years","75 years +"))
-
-
+big_data_analyse<-dplyr::mutate(big_data_analyse, across(c("patcourse_datedeath","patcourse_datedischarge"), as.Date, origin= "1970-01-01")) %>%
+  filter(report_date<=dateofreport)
 
 #in GIN the variable for status was is case dead with 1= dead and 0 = alive. ) has been lost in the merging of linelists as was difficult to retain and merge all
 #therfore populate patcourse_status if missing for alive only for ginuea
 big_data_analyse$patcourse_status<-ifelse(big_data_analyse$country_iso=="GIN" & is.na(big_data_analyse$patcourse_status), "alive", big_data_analyse$patcourse_status)
 
-#only include confirmed cases
-big_data_analyse<- big_data_analyse %>% filter(report_classif_alice=="confirmed")
+#only include confirmed cases that are not missing outcome
+big_data_analyse<- big_data_analyse %>% filter(report_classif_alice=="confirmed" & !is.na(patcourse_status))
+
+
+
+
+#remove countries that do not have reports up until 2020-10-31
+big_data_analyse<- big_data_analyse %>% group_by(country_iso) %>% mutate(lastreport_ =ifelse(max(report_date, na.rm = T)==dateofreport,1,0))
+big_data_analyse<- big_data_analyse %>% group_by(country_iso) %>% filter(lastreport_==1)
+############################################
+###########Variable creation###########
+big_data_analyse$agegroup<- cut(big_data_analyse$patinfo_ageonset, breaks = c(0, 15, 25, 35, 45, 55,65,75,Inf), right = FALSE,labels = c("< 15 years", "15-24 years","25-34 years","35-44 years","45-54 years","55-64 years","65-74 years","75 years +"))
 #correcting if any "men" with pregancy entered into their comorbs
 big_data_analyse$pregnancy<-ifelse(big_data_analyse$patinfo_sex=="M" & big_data_analyse$pregnancy==1,NA,big_data_analyse$pregnancy)
 
 #ensuring only those not missing have this variable corrrect
 big_data_analyse$capital_final<-ifelse(is.na(big_data_analyse$patinfo_resadmin1), NA, big_data_analyse$capital_final)
-
 
 big_data_analyse<-dplyr::mutate(big_data_analyse, across(c(diabetes, asthma, hypertension,cancer,
                                                            renal_disease,cardiovascular_disease,obesity,tuberculosis,drepanocytosis,chronic_pulmonary), as.numeric))
@@ -82,16 +89,17 @@ big_data_analyse$comcond_preexsist_count_top10<-rowSums(select(ungroup(big_data_
 ###########################
 #time to death analysis need to make missing problem dates entered in wrong for lab taken date date of death and date of date discharge
 timetodeath<-ungroup(big_data_analyse)
-timetodeath$lab_datetaken <- if_else(timetodeath$lab_datetaken< as.Date("2020-01-01") | timetodeath$lab_datetaken> as.Date(Sys.Date()),as.Date(NA),timetodeath$lab_datetaken)
-timetodeath$patcourse_datedeath <- if_else(timetodeath$patcourse_datedeath< as.Date("2020-01-01") | timetodeath$patcourse_datedeath> as.Date(Sys.Date()),as.Date(NA),timetodeath$patcourse_datedeath)
-timetodeath$patcourse_datedischarge <- if_else(timetodeath$patcourse_datedischarge< as.Date("2020-01-01") | timetodeath$patcourse_datedischarge> as.Date(Sys.Date()),as.Date(NA),timetodeath$patcourse_datedischarge)
+timetodeath$lab_datetaken <- if_else(timetodeath$lab_datetaken< as.Date("2020-01-01") | timetodeath$lab_datetaken> as.Date(dateofreport),as.Date(NA),as.Date(timetodeath$lab_datetaken))
+timetodeath$patcourse_datedeath <- if_else(timetodeath$patcourse_datedeath< as.Date("2020-01-01") | timetodeath$patcourse_datedeath> as.Date(dateofreport),as.Date(NA),as.Date(timetodeath$patcourse_datedeath))
+timetodeath$patcourse_datedischarge <- if_else(timetodeath$patcourse_datedischarge< as.Date("2020-01-01") | timetodeath$patcourse_datedischarge> as.Date(dateofreport),as.Date(NA),as.Date(timetodeath$patcourse_datedischarge))
+timetodeath$lab_resdate<-if_else(timetodeath$lab_resdate< as.Date("2020-01-01") | timetodeath$lab_resdate> as.Date(dateofreport),as.Date(NA),as.Date(timetodeath$lab_resdate))
 
 #use this df in the time to death analysis
 timetodeath_numbers<-timetodeath %>% filter(!is.na(lab_resdate) & !is.na(patcourse_status))
 timetodeath_numbers$startdate<-timetodeath_numbers$lab_resdate
 timetodeath_numbers$enddate<-dplyr::if_else(timetodeath_numbers$patcourse_status=="dead",timetodeath_numbers$patcourse_datedeath,timetodeath_numbers$patcourse_datedischarge)
-timetodeath_numbers$enddate<-dplyr::if_else(timetodeath_numbers$patcourse_status=="alive" & is.na(timetodeath_numbers$enddate),as.Date("2020-10-30", origin= "1970-01-01"),timetodeath_numbers$enddate)
-timetodeath_numbers<-timetodeath_numbers %>% filter(startdate<=as.Date("2020-10-30", origin= "1899-12-30") & enddate<=as.Date("2020-10-30", origin= "1899-12-30"))
+timetodeath_numbers$enddate<-dplyr::if_else(timetodeath_numbers$patcourse_status=="alive" & is.na(timetodeath_numbers$enddate),dateofreport,timetodeath_numbers$enddate)
+timetodeath_numbers<-timetodeath_numbers %>% filter(startdate<=dateofreport & enddate<=dateofreport)
 timetodeath_numbers$comcond_preexist1_alice_binary<-ifelse(!is.na(timetodeath_numbers$comcond_preexist1_alice) & timetodeath_numbers$comcond_preexist1_alice=="yes",1,
                                                            ifelse(is.na(timetodeath_numbers$comcond_preexist1_alice),NA,0)) #this would still include UGA and STP in this as makes all not given=0
 timetodeath_numbers$hcw_binary<-ifelse(!is.na(timetodeath_numbers$hcw) & timetodeath_numbers$hcw=="TRUE",1,0)
@@ -108,7 +116,8 @@ timetodeath_numbers$patinfo_age_binary<-ifelse(!is.na(timetodeath_numbers$patinf
 #define failure
 timetodeath_numbers$vlfail<-ifelse(timetodeath_numbers$patcourse_status=="dead",1,0)
 #Create person time variable (observation time)
-timetodeath_numbers$perstime <- as.numeric((timetodeath_numbers$enddate - timetodeath_numbers$startdate) / 365.25)
+timetodeath_numbers$perstime <- as.numeric(difftime(timetodeath_numbers$enddate, timetodeath_numbers$startdate, units = "days")) / 365.25
+
 timetodeath_numbers<- timetodeath_numbers %>% filter(timetodeath_numbers$perstime>0)
 #Add the survial object as variable to your dataset which is survival time (for kaplan-meier and cox)
 timetodeath_numbers$SurvObj <- with(timetodeath_numbers, survival::Surv(time = perstime, event = vlfail))
@@ -138,7 +147,7 @@ fit$vlfail<-ifelse(fit$patcourse_status=="dead",1,0)
 
 all<- big_data_analyse %>% mutate(hcw_all=ifelse(grepl("confirmed",report_classif_alice, ignore.case = T) & grepl("TRUE", hcw, ignore.case = T),1,0)) %>%
   group_by(country_iso,country_full) %>%
-  summarise(dayslastreport=as.numeric(difftime(as.Date("2020-10-30", origin= "1899-12-30"), max(report_date,na.rm = T))),
+  summarise(dayslastreport=as.numeric(difftime(as.Date("2020-10-29", origin= "1899-12-30"), max(report_date,na.rm = T))),
             datelastreport=format(max(report_date, na.rm = T), "%Y %B %d"),
             confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
             recovered=length(grep("recovered",patcourse_status_recovered,ignore.case = T)),
@@ -189,7 +198,7 @@ summary_sexage_wide<-tidyr::pivot_wider(all_sexage,agegroup,names_from= patinfo_
 summary_sexage_dead_wide<-tidyr::pivot_wider(all_sexage,agegroup,names_from= patinfo_sex,values_from=dead) %>% mutate(male_perc=(`M`/(`M`+`F`))*100 , agegroup_perc=((`M`+`F`)/sum(`M`+`F`, na.rm = T))*100)
 
 
-#ncd does not include those with no comcond entered ie. UGA and STP
+#ncd does not include those with no comcond entered ie. UGA
 ncd<- big_data_analyse %>% group_by(country_iso) %>% filter(length(unique(as.list(comcond_preexist1_alice)))>1) %>%
   group_by(country_iso,comcond_preexist1_alice) %>%  mutate(hcw_all=ifelse(grepl("confirmed",report_classif_alice, ignore.case = T) & grepl("TRUE", hcw, ignore.case = T),1,0)) %>%
   summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
@@ -235,67 +244,70 @@ table(ncd_all_chi$comcond_preexist1_alice,ncd_all_chi$patcourse_status)
 ######
 
 #ncds by type
-diabetes<- big_data_analyse %>% group_by(diabetes) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+
+ncd_type_count<-big_data_analyse %>% group_by(country_iso) %>% filter(length(unique(as.list(comcond_preexist1_alice)))>1)
+
+diabetes<- ncd_type_count %>% group_by(diabetes) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                  dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                 alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(diabetes=ifelse(diabetes==1,"diabetes",NA)) %>% filter(!is.na(diabetes)) %>% rename("co-morbidity"="diabetes")
 
-hta<-big_data_analyse %>% group_by(hypertension) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+hta<-ncd_type_count %>% group_by(hypertension) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                  alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(hypertension=ifelse(hypertension==1,"hypertension",NA)) %>% filter(!is.na(hypertension)) %>% rename("co-morbidity"="hypertension")
 
-asthma<- big_data_analyse %>% group_by(asthma) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+asthma<- ncd_type_count %>% group_by(asthma) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                              dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                 alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(asthma=ifelse(asthma==1,"asthma",NA)) %>% filter(!is.na(asthma)) %>% rename("co-morbidity"="asthma")
 
-cancer<-big_data_analyse %>% group_by(cancer) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+cancer<-ncd_type_count %>% group_by(cancer) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                             dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                             alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(cancer=ifelse(cancer==1,"cancer",NA)) %>% filter(!is.na(cancer)) %>% rename("co-morbidity"="cancer")
 
-obesity<-big_data_analyse %>% group_by(obesity) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+obesity<-ncd_type_count %>% group_by(obesity) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                               dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                             alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(obesity=ifelse(obesity==1,"obesity",NA)) %>% filter(!is.na(obesity)) %>% rename("co-morbidity"="obesity")
 
-cvd<-big_data_analyse %>% group_by(cardiovascular_disease) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+cvd<-ncd_type_count %>% group_by(cardiovascular_disease) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                          dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                               alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(cardiovascular_disease=ifelse(cardiovascular_disease==1,"cardiovascular disease",NA)) %>% filter(!is.na(cardiovascular_disease)) %>% rename("co-morbidity"="cardiovascular_disease")
 
-rd<-big_data_analyse %>% group_by(renal_disease) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+rd<-ncd_type_count %>% group_by(renal_disease) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                          alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(renal_disease=ifelse(renal_disease==1,"renal disease",NA)) %>% filter(!is.na(renal_disease)) %>% rename("co-morbidity"="renal_disease")
 
-tb<-big_data_analyse %>% group_by(tuberculosis) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+tb<-ncd_type_count %>% group_by(tuberculosis) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                               dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(tuberculosis=ifelse(tuberculosis==1,"tuberculosis",NA)) %>% filter(!is.na(tuberculosis)) %>% rename("co-morbidity"="tuberculosis")
 
-pregnancy<-big_data_analyse %>% group_by(pregnancy) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+pregnancy<-ncd_type_count %>% group_by(pregnancy) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                   dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                          alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(pregnancy=ifelse(pregnancy==1,"pregnancy",NA)) %>% filter(!is.na(pregnancy)) %>% rename("co-morbidity"="pregnancy")
 
-drepanocytosis<-big_data_analyse %>% group_by(drepanocytosis) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+drepanocytosis<-ncd_type_count %>% group_by(drepanocytosis) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                             dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                           alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(drepanocytosis=ifelse(drepanocytosis==1,"drepanocytosis",NA)) %>% filter(!is.na(drepanocytosis)) %>% rename("co-morbidity"="drepanocytosis")
 
-pd<-big_data_analyse %>% group_by(chronic_pulmonary) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+pd<-ncd_type_count %>% group_by(chronic_pulmonary) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                    dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                 alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(chronic_pulmonary=ifelse(chronic_pulmonary==1,"chronic pulmonary disease",NA)) %>% filter(!is.na(chronic_pulmonary)) %>% rename("co-morbidity"="chronic_pulmonary")
 
-not_spec<-big_data_analyse %>% group_by(not_specified_comorb) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+not_spec<-ncd_type_count %>% group_by(not_specified_comorb) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                             dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                    alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(not_specified_comorb=ifelse(not_specified_comorb==1,"not specified",NA)) %>% filter(!is.na(not_specified_comorb)) %>% rename("co-morbidity"="not_specified_comorb")
 
-other_comorb<-big_data_analyse %>% group_by(other_comorb) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+other_comorb<-ncd_type_count %>% group_by(other_comorb) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                         dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                                           alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
   mutate(other_comorb=ifelse(other_comorb==1,"other",NA)) %>% filter(!is.na(other_comorb)) %>% rename("co-morbidity"="other_comorb")
@@ -303,6 +315,7 @@ other_comorb<-big_data_analyse %>% group_by(other_comorb) %>% summarise(confirme
 ncd_type<-do.call("rbind",list(diabetes,hta,asthma,cvd,cancer, obesity,tb,pd,rd,drepanocytosis,pregnancy,not_spec,other_comorb)) %>% group_by(`co-morbidity`) %>%
   mutate(CFR=round((dead/confirmed)*100, digits = 2))
 
+openxlsx::write.xlsx(ncd_type, "whoisddying_manuscript/ncd_type_table.xlsx")
 
 
 ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% group_by(as.factor(comcond_preexsist_count_top10)) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
@@ -343,11 +356,13 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
 
   #ncd type with CFR
   ncd_type_long<- ncd_type %>% tidyr::pivot_longer(c(dead,alive), names_to= "dead/alive")
+  ncd_type_long$`co-morbidity`<-tools::toTitleCase(ncd_type_long$`co-morbidity`)
+
   cfr_labels<- ncd_type_long %>% select(c("co-morbidity","CFR")) %>% unique(.)
 
   g6<-ncd_type_long %>% ggplot(aes(factor(`co-morbidity`,levels=`co-morbidity`[`dead/alive`=="dead"][order(value[`dead/alive`=="dead"])]), value, fill=`dead/alive`, group=`dead/alive`)) + geom_bar(aes(fill=as.factor(`dead/alive`)),stat="identity", show.legend = T) +
     pub_theme4 + theme(axis.text.x=element_text(angle=0)) + scale_fill_manual(values = mycolors2[c(3,1)]) +
-    coord_flip() + labs(y="Number of cases", x= "Co-morbidity", fill="Outcome") +   geom_text(data=cfr_labels,aes(x=`co-morbidity`,y=1400,label=paste0("CFR= ",round(CFR, digits = 1), "%"),fontface= 2),
+    coord_flip() + labs(y="Number of cases", x= "Condition", fill="Outcome") +   geom_text(data=cfr_labels,aes(x=`co-morbidity`,y=1400,label=paste0("CFR= ",round(CFR, digits = 1), "%"),fontface= 2),
                                                                                               inherit.aes=FALSE, size=8,angle=0,hjust=1)
 
   ggsave("whoisddying_manuscript/ncd_type_barplot.png", width=20, height = 15)
@@ -369,18 +384,31 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
   failure<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, pregant_binary,SurvObj)
   flextable::save_as_docx(gtsummary::as_flex_table(gtsummary::tbl_uvregression(failure,survival::coxph,y=SurvObj, exponentiate = T)),path="whoisddying_manuscript/HR.docx")
 
-  failure_2<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_age_binary, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime)
-  cox <-coxph(Surv(perstime,vlfail)~ patinfo_sex_binary + patinfo_ageonset+  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary, data = failure_2)
+  failure_2<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_age_binary, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>%
+    filter(!is.na(vlfail) & !is.na(patinfo_age_binary) & !is.na(patinfo_sex_binary) & !is.na(comcond_preexist1_alice_binary) & !is.na(capital_final_binary) & !is.na(hcw_binary))
+  openxlsx::write.xlsx(failure_2, "failure2.xlsx")
+
+  cox <-coxph(Surv(perstime,vlfail)~ patinfo_sex_binary + patinfo_age_binary+  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary, data = failure_2)
   summary(cox)
 
-  survdiff(SurvObj ~ patinfo_sex_binary, data = failure)
- gtsummary::tbl_survfit(
-    failure,
-    y = SurvObj,
-    include = c(patinfo_sex_binary, hcw_binary),
-    probs = 0.5,
-    label_header = "**Median Survival**"
-  )
+ tbl_survfit_ex3 <-
+   list(survfit(Surv(perstime,vlfail) ~ 1, failure_2),
+        survfit(Surv(perstime,vlfail) ~ patinfo_sex_binary, failure_2),
+        survfit(Surv(perstime,vlfail) ~ patinfo_age_binary, failure_2),
+        survfit(Surv(perstime,vlfail) ~ hcw_binary, failure_2),
+        survfit(Surv(perstime,vlfail) ~ capital_final_binary, failure_2),
+        survfit(Surv(perstime,vlfail) ~ comcond_preexist1_alice_binary, failure_2)) %>%
+   gtsummary::tbl_survfit(probs = c(0.5))
+
+
+ survminer::ggsurvplot(
+   fit = survfit(Surv(perstime,vlfail) ~ patinfo_sex_binary, failure_2),
+   xlab = "time",
+   ylab = "Overall survival probability")
+
+
+
+
 
 ###glm model
   library(rms)
