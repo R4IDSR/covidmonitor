@@ -47,7 +47,7 @@ mycolors2 <- colorRampPalette(brewer.pal(8, "Set1"))(nb.cols)
 ###################################
 
 
-big_data_clean<-rio::import(here::here("inst/","Cleaned_linelist_2021-01-06.xlsx"), guess_max=100000) #guess max added to ensure integers are not read in as boolean
+big_data_clean<-rio::import(here::here("inst/","Cleaned_linelist_2021-01-08.xlsx"), guess_max=100000) #guess max added to ensure integers are not read in as boolean
 big_data_analyse<-big_data_clean
 ###########Filtering the data set ###########
 
@@ -65,12 +65,10 @@ big_data_analyse$patcourse_status<-ifelse(big_data_analyse$country_iso=="GIN" & 
 #only include confirmed cases that are not missing outcome
 big_data_analyse<- big_data_analyse %>% filter(report_classif_alice=="confirmed" & !is.na(patcourse_status))
 
-
-
-
 #remove countries that do not have reports up until 2020-10-31
 big_data_analyse<- big_data_analyse %>% group_by(country_iso) %>% mutate(lastreport_ =ifelse(max(report_date, na.rm = T)==dateofreport,1,0))
 big_data_analyse<- big_data_analyse %>% group_by(country_iso) %>% filter(lastreport_==1)
+
 ############################################
 ###########Variable creation###########
 big_data_analyse$agegroup<- cut(big_data_analyse$patinfo_ageonset, breaks = c(0, 15, 25, 35, 45, 55,65,75,Inf), right = FALSE,labels = c("< 15 years", "15-24 years","25-34 years","35-44 years","45-54 years","55-64 years","65-74 years","75 years +"))
@@ -102,17 +100,17 @@ timetodeath_numbers$startdate<-timetodeath_numbers$lab_resdate
 timetodeath_numbers$enddate<-dplyr::if_else(timetodeath_numbers$patcourse_status=="dead",timetodeath_numbers$patcourse_datedeath,timetodeath_numbers$patcourse_datedischarge)
 timetodeath_numbers$enddate<-dplyr::if_else(timetodeath_numbers$patcourse_status=="alive" & is.na(timetodeath_numbers$enddate),dateofreport,timetodeath_numbers$enddate)
 timetodeath_numbers<-timetodeath_numbers %>% filter(startdate<=dateofreport & enddate<=dateofreport)
-timetodeath_numbers$comcond_preexist1_alice_binary<-ifelse(!is.na(timetodeath_numbers$comcond_preexist1_alice) & timetodeath_numbers$comcond_preexist1_alice=="yes",1,
-                                                           ifelse(is.na(timetodeath_numbers$comcond_preexist1_alice),NA,0)) #this would still include UGA and STP in this as makes all not given=0
-timetodeath_numbers$hcw_binary<-ifelse(!is.na(timetodeath_numbers$hcw) & timetodeath_numbers$hcw=="TRUE",1,0)
-timetodeath_numbers$capital_final_binary<-ifelse(!is.na(timetodeath_numbers$capital_final) & timetodeath_numbers$capital_final=="TRUE",1,
-                                                 ifelse(is.na(timetodeath_numbers$capital_final),NA,0))
+
+#Create binary variables for cox regression
+#1 denotes presence 0 deontes no presence OR not reported. Summary table displays misssingness for each variable used in cox regression
+timetodeath_numbers$comcond_preexist1_alice_binary<-ifelse(timetodeath_numbers$comcond_preexist1_alice=="yes",1,0)
+timetodeath_numbers$hcw_binary<-ifelse(timetodeath_numbers$hcw=="TRUE",1,0)
+timetodeath_numbers$hcw_binary<-ifelse(is.na(timetodeath_numbers$hcw_binary),0,timetodeath_numbers$hcw_binary)
+timetodeath_numbers$capital_final_binary<-ifelse(timetodeath_numbers$capital_final=="TRUE",1,0)
+timetodeath_numbers$capital_final_binary<-ifelse(is.na(timetodeath_numbers$capital_final_binary),0,timetodeath_numbers$capital_final_binary)
 timetodeath_numbers$pregant_binary<-ifelse(is.na(timetodeath_numbers$pregnancy) & timetodeath_numbers$patinfo_sex=="F",0,timetodeath_numbers$pregnancy)
 timetodeath_numbers$patinfo_sex_binary<-ifelse(!is.na(timetodeath_numbers$patinfo_sex) & timetodeath_numbers$patinfo_sex=="M",1,
                                                ifelse(is.na(timetodeath_numbers$patinfo_sex),NA,0))
-
-timetodeath_numbers$patinfo_age_binary<-ifelse(!is.na(timetodeath_numbers$patinfo_ageonset) & timetodeath_numbers$patinfo_ageonset>=60,1,
-                                               ifelse(is.na(timetodeath_numbers$patinfo_ageonset),NA,0))
 
 
 #define failure
@@ -130,11 +128,13 @@ timetodeath_numbers$SurvObj <- with(timetodeath_numbers, survival::Surv(time = p
 
 fit<- big_data_analyse %>% filter(!is.na(patcourse_status))
 
-fit$comcond_preexist1_alice_binary<-ifelse(!is.na(fit$comcond_preexist1_alice) & fit$comcond_preexist1_alice=="yes",1,
-                                                           ifelse(is.na(fit$comcond_preexist1_alice),NA,0)) #this would still include UGA and STP in this as makes all not given=0
-fit$hcw_binary<-ifelse(!is.na(fit$hcw) & fit$hcw=="TRUE",1,0)
-fit$capital_final_binary<-ifelse(!is.na(fit$capital_final) & fit$capital_final=="TRUE",1,
-                                                 ifelse(is.na(fit$capital_final),NA,0))
+#Create binary variables for logistic regression
+#1 denotes presence 0 deontes no presence OR not reported. Summary table displays misssingness for each variable used in cox regression
+
+fit$hcw_binary<-ifelse(fit$hcw=="TRUE",1,0)
+fit$hcw_binary<-ifelse(is.na(fit$hcw_binary),0,fit$hcw_binary)
+fit$capital_final_binary<-ifelse(fit$capital_final=="TRUE",1,0)
+fit$capital_final_binary<-ifelse(is.na(fit$capital_final_binary),0,fit$capital_final_binary)
 fit$pregant_binary<-ifelse(is.na(fit$pregnancy) & fit$patinfo_sex=="F",0,fit$pregnancy)
 fit$patinfo_sex_binary<-ifelse(!is.na(fit$patinfo_sex) & fit$patinfo_sex=="M",1,
                                                ifelse(is.na(fit$patinfo_sex),NA,0))
@@ -246,7 +246,11 @@ table(ncd_all_chi$comcond_preexist1_alice,ncd_all_chi$patcourse_status)
 ######
 
 #ncds by type
-
+#again only interest in countried that entered ncds,
+#this filtering shouldnt matter for this step due to the way each ncd variable has been created and also comcond_preexsist_alice_1 created
+#as if any of the comorbidities were entered and detected using the string match, comcond_preexsist_alice_1 was changed to yes
+#in teh ncd columns a 1 denoted the disease presence and is NA everywere else so counting up only thise that reported anyway, but for the sake of
+#demonstarting numbers entered into the ncd analysis i have filtered as above (which ultimately removed UGA)
 ncd_type_count<-big_data_analyse %>% group_by(country_iso) %>% filter(length(unique(as.list(comcond_preexist1_alice)))>1)
 
 diabetes<- ncd_type_count %>% group_by(diabetes) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
@@ -319,7 +323,6 @@ ncd_type<-do.call("rbind",list(diabetes,hta,asthma,cvd,cancer, obesity,tb,pd,rd,
 
 openxlsx::write.xlsx(ncd_type, "whoisddying_manuscript/ncd_type_table.xlsx")
 
-
 ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% group_by(as.factor(comcond_preexsist_count_top10)) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                              dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                              alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
@@ -384,6 +387,24 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
 ###### cox regression time ot death
 #dataset used in failure
   failure<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, pregant_binary,SurvObj)
+  set_label(failure$patinfo_ageonset) <- "Age"
+  set_label(failure$patinfo_sex_binary) <- "Sex (Male)"
+  set_label(failure$comcond_preexist1_alice_binary) <- "Presence of comorbidity"
+  set_label(failure$capital_final_binary) <- "Residence in capital city"
+  set_label(failure$hcw_binary) <- "Health Care Worker"
+
+  summary_N_cox<-timetodeath_numbers %>% select(patinfo_sex, patinfo_ageonset, hcw,capital_final,comcond_preexist1_alice, vlfail) %>%mutate(across(-c(patinfo_ageonset),as.factor))
+
+    set_label(summary_N_cox$vlfail) <- "Mortality"
+    set_label(summary_N_cox$patinfo_ageonset) <- "Age"
+    set_label(summary_N_cox$patinfo_sex) <- "Sex (Male)"
+    set_label(summary_N_cox$comcond_preexist1_alice) <- "Presence of comorbidity"
+    set_label(summary_N_cox$capital_final) <- "Residence in capital city"
+    set_label(summary_N_cox$hcw) <- "Health Care Worker"
+
+  #summary variable of N used in cox
+    summary_N_cox %>% gtsummary::tbl_summary() %>% gtsummary::as_flex_table() %>% flextable::save_as_docx(path="whoisddying_manuscript/summary_N_vars.docx")
+
 
   ## univariate table
   univ <- gtsummary::tbl_uvregression(failure,survival::coxph,y=SurvObj, exponentiate = T)
@@ -394,9 +415,15 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
 
   ## ALEX: left age as continuous (no need to make binary):
   ## interpretation is that for each additional year the hazard of death was x higher
-  failure_2<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, patinfo_age_binary, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>%
+  failure_2<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>%
     filter(!is.na(vlfail) & !is.na(patinfo_ageonset) & !is.na(patinfo_sex_binary) & !is.na(comcond_preexist1_alice_binary) & !is.na(capital_final_binary) & !is.na(hcw_binary))
-  openxlsx::write.xlsx(failure_2, "failure2.xlsx")
+
+  set_label(failure_2$vlfail) <- "Mortality"
+  set_label(failure_2$patinfo_ageonset) <- "Age"
+  set_label(failure_2$patinfo_sex_binary) <- "Sex (Male)"
+  set_label(failure_2$comcond_preexist1_alice_binary) <- "Presence of comorbidity"
+  set_label(failure_2$capital_final_binary) <- "Residence in capital city"
+  set_label(failure_2$hcw_binary) <- "Health Care Worker"
 
   cox <- survival::coxph(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary + patinfo_ageonset +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary, data = failure_2)
   # summary(cox)
@@ -410,17 +437,55 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
 
   ## output combined table
   gtsummary::as_flex_table(combined_tbl) %>%
-    flextable::save_as_docx(path="whoisddying_manuscript/HR.docx")
+    flextable::save_as_docx(path="whoisddying_manuscript/HR_univandmultiv.docx")
 
   ## survival times
+  #just look at median time to death in those that died across the variables used in cox as we cannot use median survival time as 50% cohort not dead
+  deadonly_timeto<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>% mutate(across(-c(patinfo_ageonset,perstime),as.factor)) %>% filter(vlfail==1)
+  deadonly_timeto$age_binary60<-ifelse(!is.na(deadonly_timeto$patinfo_ageonset) & deadonly_timeto$patinfo_ageonset>=60,1,ifelse(is.na(deadonly_timeto$patinfo_ageonset),NA,0))
+  deadonly_timeto$age_binary60<-as.factor(deadonly_timeto$age_binary60)
 
-  gtsummary::tbl_survfit(
-    timetodeath_numbers,
-    y = SurvObj,
-    include = c(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary),
-    probs = 0.5,
-    label_header = "**Median Survival**"
-  )
+  kw.sex<-kruskal.test(perstime ~patinfo_sex_binary,deadonly_timeto)
+  kw.age<-kruskal.test(perstime ~age_binary60,deadonly_timeto)
+  kw.hcw<-kruskal.test(perstime ~hcw_binary,deadonly_timeto)
+  kw.captial<-kruskal.test(perstime ~capital_final_binary,deadonly_timeto)
+  kw.comcond<-kruskal.test(perstime ~comcond_preexist1_alice_binary,deadonly_timeto)
+
+
+  patinfo_sex_binary<- deadonly_timeto %>% filter(!is.na(patinfo_sex_binary)) %>% group_by(patinfo_sex_binary) %>% summarise(N=n(), median=paste0(median(perstime,na.rm = T),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.sex[3]), digits = 4)) %>%
+    add_row(patinfo_sex_binary = "Sex (Male)", N=NA, median = NA, pval = NA) %>% rename(Characteristic=patinfo_sex_binary)
+
+  age_binary60<- deadonly_timeto %>% filter(!is.na(age_binary60)) %>% group_by(age_binary60) %>% summarise(N=n(), median=paste0(median(perstime),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.age[3]), digits = 4)) %>%
+    add_row(age_binary60 = "Age (<60, ≥60) ", median = NA, pval = NA) %>% rename(Characteristic=age_binary60)
+
+  hcw_binary<- deadonly_timeto %>% group_by(hcw_binary) %>% summarise(N=n(), median=paste0(median(perstime),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.hcw[3]), digits = 4))  %>%
+    add_row(hcw_binary = "Health care Worker", N=NA, median = NA, pval = NA) %>% rename(Characteristic=hcw_binary)
+
+  capital_final_binary<- deadonly_timeto %>% group_by(capital_final_binary) %>% summarise(N=n(), median=paste0(median(perstime),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.captial[3]), digits = 4))  %>%
+    add_row(capital_final_binary = "Residence in apital city", N=NA, median = NA, pval = NA) %>% rename(Characteristic=capital_final_binary)
+
+  comcond_preexist1_alice_binary<- deadonly_timeto %>% group_by(comcond_preexist1_alice_binary) %>% summarise(N=n(),median=paste0(median(perstime),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.comcond[3]), digits = 4)) %>%
+    add_row(comcond_preexist1_alice_binary = "Presence of comorbidity", N=NA, median = NA, pval = NA) %>% rename(Characteristic=comcond_preexist1_alice_binary)
+
+  deadonly_timeto_summary<-do.call("rbind",list(patinfo_sex_binary,age_binary60,hcw_binary,capital_final_binary,comcond_preexist1_alice_binary))
+  openxlsx::write.xlsx(deadonly_timeto_summary, "whoisddying_manuscript/deadonly_timetodeaddays_median.xlsx") #this needs formatting in excel manually after to make look nicer
+
+  deadonly_timeto %>% gtsummary::tbl_summary(by=c(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary)) %>% gtsummary::add_p()
+
+   gtsummary::as_flex_table() %>% flextable::save_as_docx(path="whoisddying_manuscript/.docx")
+
+
+
+
+
+  #
+  # gtsummary::tbl_survfit(
+  #   timetodeath_numbers,
+  #   y = SurvObj,
+  #   include = c(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary),
+  #   probs = 0.5,
+  #   label_header = "**Median Survival**"
+  # )
 
 
  # tbl_survfit_ex3 <-
@@ -433,11 +498,8 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
  #   gtsummary::tbl_survfit(probs = c(0.5))
 
 
-
-
-
  survminer::ggsurvplot(
-   fit = survfit(Surv(perstime,vlfail) ~ patinfo_sex_binary, failure_2),
+   fit = survfit(Surv(perstime,vlfail) ~ patinfo_sex_binary, deadonly_timeto),
    xlab = "time",
    ylab = "Overall survival probability")
 
