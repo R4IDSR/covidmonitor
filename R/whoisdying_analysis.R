@@ -16,6 +16,8 @@ library(magrittr)
 library(flextable)
 library(rmarkdown)
 library(linelist)
+library(survival)
+library(gtsummary)
 
 ##################################
 #Initialise Theme for plotting
@@ -116,7 +118,7 @@ timetodeath_numbers$patinfo_age_binary<-ifelse(!is.na(timetodeath_numbers$patinf
 #define failure
 timetodeath_numbers$vlfail<-ifelse(timetodeath_numbers$patcourse_status=="dead",1,0)
 #Create person time variable (observation time)
-timetodeath_numbers$perstime <- as.numeric(difftime(timetodeath_numbers$enddate, timetodeath_numbers$startdate, units = "days")) / 365.25
+timetodeath_numbers$perstime <- as.numeric(difftime(timetodeath_numbers$enddate, timetodeath_numbers$startdate, units = "days")) # / 365.25 # (if want in pers-years)
 
 timetodeath_numbers<- timetodeath_numbers %>% filter(timetodeath_numbers$perstime>0)
 #Add the survial object as variable to your dataset which is survival time (for kaplan-meier and cox)
@@ -382,23 +384,56 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
 ###### cox regression time ot death
 #dataset used in failure
   failure<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, pregant_binary,SurvObj)
-  flextable::save_as_docx(gtsummary::as_flex_table(gtsummary::tbl_uvregression(failure,survival::coxph,y=SurvObj, exponentiate = T)),path="whoisddying_manuscript/HR.docx")
 
-  failure_2<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_age_binary, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>%
-    filter(!is.na(vlfail) & !is.na(patinfo_age_binary) & !is.na(patinfo_sex_binary) & !is.na(comcond_preexist1_alice_binary) & !is.na(capital_final_binary) & !is.na(hcw_binary))
+  ## univariate table
+  univ <- gtsummary::tbl_uvregression(failure,survival::coxph,y=SurvObj, exponentiate = T)
+
+  gtsummary::as_flex_table(univ) %>%
+  flextable::save_as_docx(path="whoisddying_manuscript/HR.docx")
+
+
+  ## ALEX: left age as continuous (no need to make binary):
+  ## interpretation is that for each additional year the hazard of death was x higher
+  failure_2<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, patinfo_age_binary, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>%
+    filter(!is.na(vlfail) & !is.na(patinfo_ageonset) & !is.na(patinfo_sex_binary) & !is.na(comcond_preexist1_alice_binary) & !is.na(capital_final_binary) & !is.na(hcw_binary))
   openxlsx::write.xlsx(failure_2, "failure2.xlsx")
 
-  cox <-coxph(Surv(perstime,vlfail)~ patinfo_sex_binary + patinfo_age_binary+  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary, data = failure_2)
-  summary(cox)
+  cox <- survival::coxph(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary + patinfo_ageonset +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary, data = failure_2)
+  # summary(cox)
 
- tbl_survfit_ex3 <-
-   list(survfit(Surv(perstime,vlfail) ~ 1, failure_2),
-        survfit(Surv(perstime,vlfail) ~ patinfo_sex_binary, failure_2),
-        survfit(Surv(perstime,vlfail) ~ patinfo_age_binary, failure_2),
-        survfit(Surv(perstime,vlfail) ~ hcw_binary, failure_2),
-        survfit(Surv(perstime,vlfail) ~ capital_final_binary, failure_2),
-        survfit(Surv(perstime,vlfail) ~ comcond_preexist1_alice_binary, failure_2)) %>%
-   gtsummary::tbl_survfit(probs = c(0.5))
+  multiv <- gtsummary::tbl_regression(cox, exponentiate = TRUE)
+
+  combined_tbl <- gtsummary::tbl_merge(
+    tbls = list(univ, multiv),
+    tab_spanner = c("**Univariate**", "**Multivariable**")
+  )
+
+  ## output combined table
+  gtsummary::as_flex_table(combined_tbl) %>%
+    flextable::save_as_docx(path="whoisddying_manuscript/HR.docx")
+
+  ## survival times
+
+  gtsummary::tbl_survfit(
+    timetodeath_numbers,
+    y = SurvObj,
+    include = c(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary),
+    probs = 0.5,
+    label_header = "**Median Survival**"
+  )
+
+
+ # tbl_survfit_ex3 <-
+ #   list(survfit(Surv(perstime,vlfail) ~ 1, failure_2),
+ #        survfit(Surv(perstime,vlfail) ~ patinfo_sex_binary, failure_2),
+ #        survfit(Surv(perstime,vlfail) ~ patinfo_age_binary, failure_2),
+ #        survfit(Surv(perstime,vlfail) ~ hcw_binary, failure_2),
+ #        survfit(Surv(perstime,vlfail) ~ capital_final_binary, failure_2),
+ #        survfit(Surv(perstime,vlfail) ~ comcond_preexist1_alice_binary, failure_2)) %>%
+ #   gtsummary::tbl_survfit(probs = c(0.5))
+
+
+
 
 
  survminer::ggsurvplot(
@@ -410,54 +445,54 @@ ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% g
 
 
 
-###glm model
-  library(rms)
-  library(foreign)
-  library(pROC)
-  library(ResourceSelection)
-  library(sjPlot)
-  library(sjlabelled)
-  library(sjmisc)
-  library(ggplot2)
-
-
-#model fit on cases with complete variables
-  fit.dat<- fit %>% filter(!is.na(vlfail) & !is.na(patinfo_ageonset) & !is.na(patinfo_sex_binary) & !is.na(comcond_preexist1_alice_binary) & !is.na(capital_final_binary) & !is.na(hcw_binary))
-  dd <- datadist(fit.dat)
-  options(datadist='dd')
-
-  set_label(fit.dat$vlfail) <- "Mortality"
-  set_label(fit.dat$patinfo_ageonset) <- "Age"
-  set_label(fit.dat$patinfo_sex_binary) <- "Sex (Male)"
-  set_label(fit.dat$comcond_preexist1_alice_binary) <- "Presence of comorbidity"
-  set_label(fit.dat$capital_final_binary) <- "Residence in capital city"
-  set_label(fit.dat$hcw_binary) <- "Health Care Worker"
-
-
-  #considering all of these variables, age can be continous
-  fit.model<-lrm(vlfail~patinfo_ageonset + patinfo_sex_binary +comcond_preexist1_alice_binary +capital_final_binary+ hcw_binary, data=fit.dat, x=T, y=T)
-  summary(fit.model)
-
-  #need a glm oject in gtsummary same as above just allows tabulation
-  fit.model.2 <- glm(vlfail~patinfo_ageonset + patinfo_sex_binary +comcond_preexist1_alice_binary +capital_final_binary+ hcw_binary, data=fit.dat, family = binomial)
-  summary(fit.model.2)
-  flextable::save_as_docx(gtsummary::as_flex_table(gtsummary::tbl_regression(fit.model.2,exponentiate = T)),path="whoisddying_manuscript/OR_forlrm.docx")
-
-
-  # backward selection moethod with a p-value of 0.157
-  fastbw(fit.model, type="individual", rule="p", sls=0.157)
-  #no factors deleted
-
-  # store the predicted probabilities by using the predict function
-  predict.fit <- predict(fit.model, type="fitted")
-  myROC <- roc(fit.model$y, predict.fit, pl=T, ci=TRUE)
-  myROC
-  hoslem.test(fit.model$y, predict.fit)
-
-  g8<-plot_model(fit.model, colour= mycolours2,value.size = 9,
-             value.offset = 0.3,
-             dot.size = 5,
-             line.size = 3,
-             sort.est = T, vline.color = "black", show.values = T) + pub_theme4
-  ggsave("whoisddying_manuscript/lrm_forrest.png",width=20, height = 15)
+# ###glm model
+#   library(rms)
+#   library(foreign)
+#   library(pROC)
+#   library(ResourceSelection)
+#   library(sjPlot)
+#   library(sjlabelled)
+#   library(sjmisc)
+#   library(ggplot2)
+#
+#
+# #model fit on cases with complete variables
+#   fit.dat<- fit %>% filter(!is.na(vlfail) & !is.na(patinfo_ageonset) & !is.na(patinfo_sex_binary) & !is.na(comcond_preexist1_alice_binary) & !is.na(capital_final_binary) & !is.na(hcw_binary))
+#   dd <- datadist(fit.dat)
+#   options(datadist='dd')
+#
+#   set_label(fit.dat$vlfail) <- "Mortality"
+#   set_label(fit.dat$patinfo_ageonset) <- "Age"
+#   set_label(fit.dat$patinfo_sex_binary) <- "Sex (Male)"
+#   set_label(fit.dat$comcond_preexist1_alice_binary) <- "Presence of comorbidity"
+#   set_label(fit.dat$capital_final_binary) <- "Residence in capital city"
+#   set_label(fit.dat$hcw_binary) <- "Health Care Worker"
+#
+#
+#   #considering all of these variables, age can be continous
+#   fit.model<-lrm(vlfail~patinfo_ageonset + patinfo_sex_binary +comcond_preexist1_alice_binary +capital_final_binary+ hcw_binary, data=fit.dat, x=T, y=T)
+#   summary(fit.model)
+#
+#   #need a glm oject in gtsummary same as above just allows tabulation
+#   fit.model.2 <- glm(vlfail~patinfo_ageonset + patinfo_sex_binary +comcond_preexist1_alice_binary +capital_final_binary+ hcw_binary, data=fit.dat, family = binomial)
+#   summary(fit.model.2)
+#   flextable::save_as_docx(gtsummary::as_flex_table(gtsummary::tbl_regression(fit.model.2,exponentiate = T)),path="whoisddying_manuscript/OR_forlrm.docx")
+#
+#
+#   # backward selection moethod with a p-value of 0.157
+#   fastbw(fit.model, type="individual", rule="p", sls=0.157)
+#   #no factors deleted
+#
+#   # store the predicted probabilities by using the predict function
+#   predict.fit <- predict(fit.model, type="fitted")
+#   myROC <- roc(fit.model$y, predict.fit, pl=T, ci=TRUE)
+#   myROC
+#   hoslem.test(fit.model$y, predict.fit)
+#
+#   g8<-plot_model(fit.model, colour= mycolours2,value.size = 9,
+#              value.offset = 0.3,
+#              dot.size = 5,
+#              line.size = 3,
+#              sort.est = T, vline.color = "black", show.values = T) + pub_theme4
+#   ggsave("whoisddying_manuscript/lrm_forrest.png",width=20, height = 15)
 
