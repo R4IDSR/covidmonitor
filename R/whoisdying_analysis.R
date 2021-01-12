@@ -488,15 +488,15 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
   gtsummary::as_flex_table(combined_tbl) %>%
     flextable::save_as_docx(path="whoisddying_manuscript/HR_univandmultiv.docx")
 
-  #assumptions
+  #assumptions change variable names for easy plotting
   failure_3<- failure_2 %>% rename(c("Sex (Male)"=patinfo_sex_binary,  "Age (continuous)"=patinfo_ageonset, "Health Care worker Status"=hcw_binary, "Residence in capital city status"=capital_final_binary, "Comorbidity status"=comcond_preexist1_alice_binary))
-  cox <- survival::coxph(survival::Surv(perstime,vlfail) ~ `Sex (Male)` + `Age (continuous)` +  `Health Care worker Status` + `Residence in capital city status` + `Comorbidity status`, data = failure_3)
+  cox_3 <- survival::coxph(survival::Surv(perstime,vlfail) ~ `Sex (Male)` + `Age (continuous)` +  `Health Care worker Status` + `Residence in capital city status` + `Comorbidity status`, data = failure_3)
 
-  zp <- cox.zph(cox, transform = "km")
+  zp <- cox.zph(cox_3, transform = "km")
   plotzp<-survminer::ggcoxzph(zp)
   new<- ggpubr::ggpar(plotzp,font.main=14, font.submain = 14, font.x=12, font.y=12)
   #forest plot
-  survminer::ggforest(cox,fontsize = 1) + pub_theme4
+  survminer::ggforest(cox_3,fontsize = 1) + pub_theme4
 
   # cox didnt meet assumptions for capital city and comorb varible. therefore vary them with time
   # use time splitter method as follows
