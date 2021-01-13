@@ -369,6 +369,52 @@ test<-ncd_combin_all %>% group_by(comcond_preexsist_count_top10) %>% count_(name
 
 openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx")
 
+
+# #one way for combination plotting
+
+# combanalysis<-ncd_combin_new %>% mutate(
+#   # combine the variables into one, using paste() with a semicolon separating any values
+#   all_comors = paste(diabetes, asthma, hypertension,cancer,
+#                        renal_disease,cardiovascular_disease,obesity,tuberculosis,drepanocytosis,chronic_pulmonary, sep = "; "),
+#
+#   # make a copy of all_symptoms variable, but of class "list" (which is required to use ggupset() in next step)
+#   all_comors_list = as.list(strsplit(all_comors, "; "))
+# )
+# ggplot(combanalysis,
+#        aes(x=all_comors_list)) +
+#   geom_bar() +
+#   ggupset::scale_x_upset(reverse = FALSE,
+#                 n_intersections = 10,
+#                 sets = c("diabetes", "asthma", "hypertension", "obesity", "cardiovascular_disease", "renal_disease", "drepanocytosis","chronic_pulmonary", "cancer", "tuberculosis")
+#   )+
+#   labs(title = "Comorbidities",
+#        subtitle = "10 most frequent combinations of comorbidities",
+#        caption = "Caption here.",
+#        x = "Comorbidity combination",
+#        y = "Frequency in dataset")
+
+
+#UpsetR way
+combanalysis_2<-as.data.frame(ncd_combin) %>% mutate(across(c(diabetes, asthma, hypertension, obesity, cardiovascular_disease, renal_disease, drepanocytosis,chronic_pulmonary, cancer, tuberculosis), ~ifelse(is.na(.),0,.))) %>%
+  rename(c("Cardiovascular Disease"=cardiovascular_disease, "Renal Disease"=renal_disease,"Chronic Pulmonary Disease"=chronic_pulmonary)) %>%
+  rename_all(tools::toTitleCase)
+UpSetR::upset(
+  select(combanalysis_2, Diabetes, Asthma, Hypertension, Obesity, `Cardiovascular Disease`, `Renal Disease`, Drepanocytosis,`Chronic Pulmonary Disease`, Cancer, Tuberculosis),
+  sets = c("Diabetes", "Asthma", "Hypertension", "Obesity", "Cardiovascular Disease", "Renal Disease", "Drepanocytosis","Chronic Pulmonary Disease", "Cancer", "Tuberculosis"),
+  order.by =  "freq",
+  #group.by = "degree",
+  sets.bar.color = mycolors[1:10], # optional colors
+  empty.intersections = "on",
+  #nsets = 5,
+  number.angles = 0,
+  point.size = 3.5,
+  line.size = 2,
+  set_size.show = TRUE,
+  mainbar.y.label = "Comorbidity combinations",
+  nintersects=40,
+  sets.x.label = "Patients with \n comorbidity", text.scale = 2,set_size.angles = 0)
+
+
 ##################################################
 #plotting
 
@@ -475,9 +521,13 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
   set_label(failure_2$capital_final_binary) <- "Residence in capital city"
   set_label(failure_2$hcw_binary) <- "Health Care Worker"
 
-  cox <- survival::coxph(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary + patinfo_ageonset +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary, data = failure_2)
+  #cox <- survival::coxph(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary + patinfo_ageonset +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary + comcond_preexist1_alice_binary*patinfo_ageonset, data = failure_2)
+  cox_updated <- survival::coxph(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary  +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary*patinfo_ageonset, data = failure_2)
+  #found interactions with comorbidity and age. Model has been updated accrodingly
 
-  multiv <- gtsummary::tbl_regression(cox, exponentiate = TRUE)
+
+
+  multiv <- gtsummary::tbl_regression(cox_updated, exponentiate = TRUE)
 
   combined_tbl <- gtsummary::tbl_merge(
     tbls = list(univ, multiv),
@@ -490,55 +540,57 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
 
   #assumptions change variable names for easy plotting
   failure_3<- failure_2 %>% rename(c("Sex (Male)"=patinfo_sex_binary,  "Age (continuous)"=patinfo_ageonset, "Health Care worker Status"=hcw_binary, "Residence in capital city status"=capital_final_binary, "Comorbidity status"=comcond_preexist1_alice_binary))
-  cox_3 <- survival::coxph(survival::Surv(perstime,vlfail) ~ `Sex (Male)` + `Age (continuous)` +  `Health Care worker Status` + `Residence in capital city status` + `Comorbidity status`, data = failure_3)
+  cox_updated_2 <- survival::coxph(survival::Surv(perstime,vlfail) ~ `Sex (Male)` +  `Health Care worker Status` + `Residence in capital city status` + `Comorbidity status`*`Age (continuous)`, data = failure_3)
 
-  zp <- cox.zph(cox_3, transform = "km")
+  zp <- cox.zph(cox_updated_2, transform = "km")
   plotzp<-survminer::ggcoxzph(zp)
   new<- ggpubr::ggpar(plotzp,font.main=14, font.submain = 14, font.x=12, font.y=12)
+
   #forest plot
-  survminer::ggforest(cox_3,fontsize = 1) + pub_theme4
+  survminer::ggforest(cox_updated_2,fontsize = 1) + pub_theme4
+ggsave("whoisddying_manuscript/forrect_updatedmodel.png")
 
-  # cox didnt meet assumptions for capital city and comorb varible. therefore vary them with time
-  # use time splitter method as follows
-
-  spl_failure_2 <-
-    timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>%
-    Greg::timeSplitter(by = .5,
-                       event_var = "vlfail",
-                       event_start_status = 0,
-                       time_var = "perstime",
-                       time_related_vars = c("patinfo_ageonset"))
-
-  interval_cox <-update(cox, Surv(Start_time, Stop_time, vlfail) ~ .,
-                        data = spl_failure_2)
-
-  #now vary caputal city with time
-  time_int_model <- update(interval_cox,.~.+capital_final_binary:Start_time)
-
-
-  #check assumptions
-  summary(time_int_model)
-  cox.zph(time_int_model, transform = "km")
-  #add comorbidity varying
-  time_int_model_2 <- update(time_int_model,.~.+comcond_preexist1_alice_binary:Start_time)
-# again violating assumptions
-
-  #test if capital city is non-linear
-  spl_failure_2 %<>%
-    mutate(capital_start = capital_final_binary * Start_time)
-  anova(time_int_model,
-        update(time_int_model, .~.+I(capital_start^2)))
+#   # cox didnt meet assumptions for capital city and comorb varible. therefore vary them with time
+#   # use time splitter method as follows fot testing
+#
+#   spl_failure_2 <-
+#     timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>%
+#     Greg::timeSplitter(by = .5,
+#                        event_var = "vlfail",
+#                        event_start_status = 0,
+#                        time_var = "perstime",
+#                        time_related_vars = c("patinfo_ageonset"))
+#
+#   interval_cox <-update(cox, Surv(Start_time, Stop_time, vlfail) ~ .,
+#                         data = spl_failure_2)
+#
+#   #now vary caputal city with time
+#   time_int_model <- update(interval_cox,.~.+capital_final_binary:Start_time)
+#
+#   #check assumptions
+#   summary(time_int_model)
+#   cox.zph(time_int_model, transform = "km")
+#   #add comorbidity varying
+#   time_int_model_2 <- update(time_int_model,.~.+comcond_preexist1_alice_binary:Start_time)
+# # again violating assumptions
+#
+#   #test if capital city is non-linear
+#   spl_failure_2 %<>%
+#     mutate(capital_start = capital_final_binary * Start_time)
+#   anova(time_int_model,
+#         update(time_int_model, .~.+I(capital_start^2)))
 
 
   #coxphw for non porportionality - some variable did not meet assumptions use weighted cox regressiom
   #mulitvariable
-  cox_w <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary + patinfo_ageonset +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary, data = failure_2)
+  #cox_w <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary + patinfo_ageonset +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary, data = failure_2)
+  cox_w_updated <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary*patinfo_ageonset, data = failure_2)
 
-  multitab <- data.frame(Characteristic= c("Sex (male)","Age (continuous)","Health care worker status","Residence in capital city status","Comorbidity status","Pregnancy"),
-                         N=c(nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2)," "),
-                   HR=c(unlist(round(exp(cox_w$coefficients[,1]), digits = 2)),NA),
-                   `95% CI`=c(paste(unlist(round(cox_w$ci.lower[,1], digits=2)),unlist(round(cox_w$ci.upper[,1], digits = 2)), sep=",")," "),
-                   `p-value`=c(unlist(round(cox_w$prob, digits = 3))," "),
+  multitab <- data.frame(Characteristic= c("Sex (male)","Health care worker status","Residence in capital city status","Comorbidity status","Age (continuous)","Comorbidity status*Age (continuous)","Pregnancy"),
+                         N=c(nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2)," "),
+                   HR=c(unlist(round(exp(cox_w_updated$coefficients[,1]), digits = 2)),NA),
+                   `95% CI`=c(paste(unlist(round(cox_w_updated$ci.lower[,1], digits=2)),unlist(round(cox_w_updated$ci.upper[,1], digits = 2)), sep=",")," "),
+                   `p-value`=c(unlist(round(cox_w_updated$prob, digits = 3))," "),
                    stringsAsFactors=FALSE)
 
 #univariate
@@ -551,7 +603,9 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
 
   unitab <- data.frame(Characteristic= c("Sex (male)","Age (continuous)","Health care worker status","Residence in capital city status","Comorbidity status","Pregnancy"),
                        N=c(nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2[failure_2$patinfo_sex_binary==0,])),
-                         HR=c(round(exp(cox_w_sex$coefficients[1]), digits = 4),round(exp(cox_w_age$coefficients[1]), digits = 4),round(exp(cox_w_hcw$coefficients[1]), digits = 4),round(exp(cox_w_cap$coefficients[1]), digits = 2),round(exp(cox_w_com$coefficients[1]), digits = 2),round(exp(cox_w_preg$coefficients[1]), digits = 2)),
+                       n_dead=c(nrow(failure_2[failure_2$patinfo_sex_binary==1 & failure_2$vlfail==1,])," ",nrow(failure_2[failure_2$hcw_binary==1 & failure_2$vlfail==1,]),nrow(failure_2[failure_2$capital_final_binary==1 & failure_2$vlfail==1,]),nrow(failure_2[failure_2$comcond_preexist1_alice_binary==1 & failure_2$vlfail==1,])," "),
+                       n_perstime=c(sum(failure_2$perstime[failure_2$patinfo_sex_binary==1 & failure_2$vlfail==1])," ", sum(failure_2$perstime[failure_2$hcw_binary==1 & failure_2$vlfail==1]), sum(failure_2$perstime[failure_2$capital_final_binary==1 & failure_2$vlfail==1]),sum(failure_2$perstime[failure_2$comcond_preexist1_alice_binary & failure_2$vlfail==1]), " "),
+                       HR=c(round(exp(cox_w_sex$coefficients[1]), digits = 4),round(exp(cox_w_age$coefficients[1]), digits = 4),round(exp(cox_w_hcw$coefficients[1]), digits = 4),round(exp(cox_w_cap$coefficients[1]), digits = 2),round(exp(cox_w_com$coefficients[1]), digits = 2),round(exp(cox_w_preg$coefficients[1]), digits = 2)),
                          `95% CI`=c(paste((round(cox_w_sex$ci.lower[1], digits=2)),unlist(round(cox_w_sex$ci.upper[1], digits = 2)), sep=","),
                                     paste((round(cox_w_age$ci.lower[1], digits=2)),unlist(round(cox_w_age$ci.upper[1], digits = 2)), sep=","),
                                     paste((round(cox_w_hcw$ci.lower[1], digits=2)),unlist(round(cox_w_hcw$ci.upper[1], digits = 2)), sep=","),
@@ -562,15 +616,15 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
                          stringsAsFactors=FALSE)
 
 
-  combtab<-merge(unitab,multitab, by = "Characteristic") %>% select(-c(N.y)) %>%mutate(Characteristic =  factor(Characteristic, levels = c("Sex (male)","Age (continuous)","Health care worker status","Residence in capital city status","Comorbidity status","Pregnancy"))) %>%
+  combtab<-merge(unitab,multitab, by = "Characteristic", all=T) %>% select(-c(N.y)) %>%mutate(Characteristic =  factor(Characteristic, levels = c("Sex (male)","Age (continuous)","Health care worker status","Residence in capital city status","Comorbidity status","Comorbidity status*Age (continuous)", "Pregnancy"))) %>%
     arrange(Characteristic)   %>%flextable() %>% set_header_labels(
-    values = c(Characterisitc="Characterisitc",N.x="N",HR.x="HR*", X95..CI.x="95% CI*", p.value.x="p-value",HR.y="HR*", X95..CI.y="95% CI*", p.value.y="p-value"), top = T)
-  combtab<-add_header_row(combtab,values = c(" ", " "," ", "Univariate", "Univariate"," ", "Multivariate","Multivariate"), top = T ) %>%  merge_h(part = "header") %>%
+    values = c(Characterisitc="Characterisitc",n_dead="Dead (N)", n_perstime="Time (days)",N.x="N",HR.x="aHR*", X95..CI.x="95% CI*", p.value.x="p-value",HR.y="aaHR*", X95..CI.y="95% CI*", p.value.y="p-value"), top = T)
+  combtab<-add_header_row(combtab,values = c(" ", " "," "," "," ", "Univariate", "Univariate"," ", "Multivariate","Multivariate"), top = T ) %>%  merge_h(part = "header") %>%
     footnote(i = 1, j = 1:8,
               value = as_paragraph(
-                c("HR = Hazard Ratio, CI = Confidence Interval")),
-              ref_symbols = c("*"),
-              part = "header") %>% fontsize(size = 14, part = "header") %>% fontsize(size = 13, part = "body") %>% fontsize(size = 12, part = "footer") %>% flextable::save_as_docx(path="whoisddying_manuscript/HR_univandmultiv_weighted.docx")
+                c("aHR = average Hazard Ratio, CI = Confidence Interval, aaHR = average adjusted Hazard Ratio",
+                  "Females only")),
+              ref_symbols = c("*","†")) %>% fontsize(size = 14, part = "header") %>% fontsize(size = 13, part = "body") %>% fontsize(size = 12, part = "footer") %>% flextable::save_as_docx(path="whoisddying_manuscript/HR_univandmultiv_weighted.docx")
 
 ### testing interactions for each variable, Alex has extra code to complete a table which identifies if confounding or not, for now just eyeball
 
