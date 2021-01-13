@@ -575,8 +575,9 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
 ### testing interactions for each variable, Alex has extra code to complete a table which identifies if confounding or not, for now just eyeball
 
   fail_strat<-failure_2
+  fail_strat$patinfo_ageonset_binary <-ifelse(fail_strat$patinfo_ageonset>=40,1,0)
   fail_strat$vlfail<-as.logical(fail_strat$vlfail)
-  vars<-c(names(fail_strat[1:5]))
+  vars<-c(names(fail_strat[c(1,3,4,5,9)]))
   outtab<-list()
   for(i in vars){
     fail_strat[[i]]<- as.logical(fail_strat[[i]])
@@ -590,6 +591,7 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
     strat_tab$effectmod<-NA
     strat_tab$stratifier<-i
     outtab[[i]]<-strat_tab
+    openxlsx::write.xlsx(outtab[[i]],paste("whoisddying_manuscript/", i,".xlsx"))
   }
 
 
