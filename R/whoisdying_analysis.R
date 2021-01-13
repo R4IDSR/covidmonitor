@@ -572,6 +572,30 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
               ref_symbols = c("*"),
               part = "header") %>% fontsize(size = 14, part = "header") %>% fontsize(size = 13, part = "body") %>% fontsize(size = 12, part = "footer") %>% flextable::save_as_docx(path="whoisddying_manuscript/HR_univandmultiv_weighted.docx")
 
+### testing interactions for each variable, Alex has extra code to complete a table which identifies if confounding or not, for now just eyeball
+
+  fail_strat<-failure_2
+  fail_strat$vlfail<-as.logical(fail_strat$vlfail)
+  vars<-c(names(fail_strat[1:5]))
+  outtab<-list()
+  for(i in vars){
+    fail_strat[[i]]<- as.logical(fail_strat[[i]])
+  }
+
+  for(i in vars){
+    strat_var= tidyselect::vars_select(colnames(fail_strat),i)
+
+    strat_tab<- epibuffet::tab_univariate(fail_strat,vlfail, vars[vars!=i], perstime = perstime, strata=strat_var, measure="IRR", woolf_test = T)
+    strat_tab$confounding<- NA
+    strat_tab$effectmod<-NA
+    strat_tab$stratifier<-i
+    outtab[[i]]<-strat_tab
+  }
+
+
+
+
+
   ## survival times
   #just look at median time to death in those that died across the variables used in cox as we cannot use median survival time as 50% cohort not dead
   deadonly_timeto<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>% mutate(across(-c(patinfo_ageonset,perstime),as.factor)) %>% filter(vlfail==1)
