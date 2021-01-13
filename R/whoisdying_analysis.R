@@ -465,7 +465,7 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
 
   ## ALEX: left age as continuous (no need to make binary):
   ## interpretation is that for each additional year the hazard of death was x higher
-  failure_2<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>%
+  failure_2<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime, pregant_binary) %>%
     filter(!is.na(vlfail) & !is.na(patinfo_ageonset) & !is.na(patinfo_sex_binary) & !is.na(comcond_preexist1_alice_binary) & !is.na(capital_final_binary) & !is.na(hcw_binary))
 
   set_label(failure_2$vlfail) <- "Mortality"
@@ -500,6 +500,7 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
 
   # cox didnt meet assumptions for capital city and comorb varible. therefore vary them with time
   # use time splitter method as follows
+
   spl_failure_2 <-
     timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>%
     Greg::timeSplitter(by = .5,
@@ -520,7 +521,7 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
   cox.zph(time_int_model, transform = "km")
   #add comorbidity varying
   time_int_model_2 <- update(time_int_model,.~.+comcond_preexist1_alice_binary:Start_time)
-
+# again violating assumptions
 
   #test if capital city is non-linear
   spl_failure_2 %<>%
@@ -528,15 +529,48 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
   anova(time_int_model,
         update(time_int_model, .~.+I(capital_start^2)))
 
+
   #coxphw for non porportionality - some variable did not meet assumptions use weighted cox regressiom
   #mulitvariable
   cox_w <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary + patinfo_ageonset +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary, data = failure_2)
 
+  multitab <- data.frame(Characteristic= c("Sex (male)","Age (continuous)","Health care worker status","Residence in capital city status","Comorbidity status","Pregnancy"),
+                         N=c(nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2)," "),
+                   HR=c(unlist(round(exp(cox_w$coefficients[,1]), digits = 2)),NA),
+                   `95% CI`=c(paste(unlist(round(cox_w$ci.lower[,1], digits=2)),unlist(round(cox_w$ci.upper[,1], digits = 2)), sep=",")," "),
+                   `p-value`=c(unlist(round(cox_w$prob, digits = 3))," "),
+                   stringsAsFactors=FALSE)
+
+#univariate
+  cox_w_sex <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary, data = failure_2)
+  cox_w_age <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ patinfo_ageonset, data = failure_2)
+  cox_w_hcw <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ hcw_binary, data = failure_2)
+  cox_w_cap <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ capital_final_binary , data = failure_2)
+  cox_w_com <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ comcond_preexist1_alice_binary, data = failure_2)
+  cox_w_preg <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ pregant_binary, data = failure_2)
+
+  unitab <- data.frame(Characteristic= c("Sex (male)","Age (continuous)","Health care worker status","Residence in capital city status","Comorbidity status","Pregnancy"),
+                       N=c(nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2[failure_2$patinfo_sex_binary==0,])),
+                         HR=c(round(exp(cox_w_sex$coefficients[1]), digits = 4),round(exp(cox_w_age$coefficients[1]), digits = 4),round(exp(cox_w_hcw$coefficients[1]), digits = 4),round(exp(cox_w_cap$coefficients[1]), digits = 2),round(exp(cox_w_com$coefficients[1]), digits = 2),round(exp(cox_w_preg$coefficients[1]), digits = 2)),
+                         `95% CI`=c(paste((round(cox_w_sex$ci.lower[1], digits=2)),unlist(round(cox_w_sex$ci.upper[1], digits = 2)), sep=","),
+                                    paste((round(cox_w_age$ci.lower[1], digits=2)),unlist(round(cox_w_age$ci.upper[1], digits = 2)), sep=","),
+                                    paste((round(cox_w_hcw$ci.lower[1], digits=2)),unlist(round(cox_w_hcw$ci.upper[1], digits = 2)), sep=","),
+                                    paste((round(cox_w_cap$ci.lower[1], digits=2)),unlist(round(cox_w_cap$ci.upper[1], digits = 2)), sep=","),
+                                    paste((round(cox_w_com$ci.lower[1], digits=2)),unlist(round(cox_w_com$ci.upper[1], digits = 2)), sep=","),
+                                    paste((round(cox_w_preg$ci.lower[1], digits=2)),unlist(round(cox_w_preg$ci.upper[1], digits = 2)), sep=",")),
+                       `p-value`=c(round(cox_w_sex$prob[1], digits = 3),round(cox_w_age$prob[1], digits = 3),round(cox_w_hcw$prob[1], digits = 3),round(cox_w_cap$prob[1], digits = 3),round(cox_w_com$prob[1], digits = 3), round(cox_w_preg$prob[1], digits = 3)),
+                         stringsAsFactors=FALSE)
 
 
-
-
-
+  combtab<-merge(unitab,multitab, by = "Characteristic") %>% select(-c(N.y)) %>%mutate(Characteristic =  factor(Characteristic, levels = c("Sex (male)","Age (continuous)","Health care worker status","Residence in capital city status","Comorbidity status","Pregnancy"))) %>%
+    arrange(Characteristic)   %>%flextable() %>% set_header_labels(
+    values = c(Characterisitc="Characterisitc",N.x="N",HR.x="HR*", X95..CI.x="95% CI*", p.value.x="p-value",HR.y="HR*", X95..CI.y="95% CI*", p.value.y="p-value"), top = T)
+  combtab<-add_header_row(combtab,values = c(" ", " "," ", "Univariate", "Univariate"," ", "Multivariate","Multivariate"), top = T ) %>%  merge_h(part = "header") %>%
+    footnote(i = 1, j = 1:8,
+              value = as_paragraph(
+                c("HR = Hazard Ratio, CI = Confidence Interval")),
+              ref_symbols = c("*"),
+              part = "header") %>% fontsize(size = 14, part = "header") %>% fontsize(size = 13, part = "body") %>% fontsize(size = 12, part = "footer") %>% flextable::save_as_docx(path="whoisddying_manuscript/HR_univandmultiv_weighted.docx")
 
   ## survival times
   #just look at median time to death in those that died across the variables used in cox as we cannot use median survival time as 50% cohort not dead
