@@ -2,12 +2,12 @@
 #'
 #' @param inputdirectory path to folder containing excel tool datasets
 #'
-#' @param region 3 letter ISO-code for country of interest, in quotation marks,
-#' combine multiple countries with c(...), default is "AFRO" to read in all available.
-#'
 #' @param outputdirectory path to folder where merged file is to be saved (must exist already)
 #'
 #' @param outputname character string to name merged file
+#'
+#' @param isotomerge 3 letter ISO-code for country of interest, in quotation marks,
+#' combine multiple countries with c(...), default is "AFRO" to read in all available.
 #'
 #' @param wide logical (TRUE/FALSE) of whether the output data frame should be
 #' in wide format (default), else will produce long format data
@@ -23,7 +23,7 @@
 #' @export
 
 merge_kpi <- function(inputdirectory,
-                      region = "AFRO",
+                      isotomerge = "AFRO",
                       outputdirectory = tempdir(),
                       outputname = "kpi_merged",
                       wide = TRUE,
@@ -43,11 +43,11 @@ merge_kpi <- function(inputdirectory,
     stop("No files found, check the path used for inputdirectory")
   }
 
-  ## subset files to read-in if region is not "AFRO"
-  if (!"AFRO" %in% region) {
+  ## subset files to read-in if isotomerge is not "AFRO"
+  if (!"AFRO" %in% isotomerge) {
 
     ## combine all the countries in to one string seperated with OR
-    lookers <- paste(paste0("/", region, ".KPI"), collapse = "|")
+    lookers <- paste(paste0("/", isotomerge, ".KPI"), collapse = "|")
 
     ## subset file list based on search strings
     files <- files[grepl(lookers, files)]
@@ -589,7 +589,7 @@ merge_kpi <- function(inputdirectory,
 
   ## output file
   # define path to output to
-  filename <- base::paste0(outputdirectory,"/",outputname,".xlsx")
+  filename <- paste0(outputdirectory,"/", outputname, Sys.Date(), ".xlsx")
   # write file
   rio::export(output, file = filename)
 

@@ -6,7 +6,7 @@
 \usage{
 merge_kpi(
   inputdirectory,
-  region = "AFRO",
+  isotomerge = "AFRO",
   outputdirectory = tempdir(),
   outputname = "kpi_merged",
   wide = TRUE,
@@ -16,7 +16,7 @@ merge_kpi(
 \arguments{
 \item{inputdirectory}{path to folder containing excel tool datasets}
 
-\item{region}{3 letter ISO-code for country of interest, in quotation marks,
+\item{isotomerge}{3 letter ISO-code for country of interest, in quotation marks,
 combine multiple countries with c(...), default is "AFRO" to read in all available.}
 
 \item{outputdirectory}{path to folder where merged file is to be saved (must exist already)}
