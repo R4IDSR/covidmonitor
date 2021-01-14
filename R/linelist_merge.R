@@ -59,7 +59,8 @@ merge_linelist <- function(inputdirectory,
 
   ## chuck an error if ISO Code wrong
   if (length(files) == 0) {
-    stop("No files found, check the country codes are correct (3 letters)")
+    stop("No files found, check the country codes are correct (3 letters) or
+         if used `AFRO` check file path")
   }
 
   # add in a catch for files not processed properly (default is that these are
@@ -157,7 +158,9 @@ merge_linelist <- function(inputdirectory,
       next
     } else {
       # guess max to ensure no cells are missing when reading in if many empty columns preceeded
-      og_sheet <- rio::import(files[f], which = sheetname, skip = skip, guess_max = 10000000)
+      og_sheet <- suppressMessages(
+        rio::import(files[f], which = sheetname, skip = skip, guess_max = 10000000)
+      )
     }
 
     # clean variable names to removed unwated regex patterns, replace all spaces with a ., inorder to match var_dict dictionary
