@@ -14,8 +14,9 @@ library("patchwork")
 
 
 ## import alice's count dataset
-counts <- rio::import("https://docs.google.com/spreadsheets/d/1P8Y18wxhntPVjt8bYstBcXfZIAgHfLei/edit#gid=1946857273") %>%
-  filter(country_iso != "sum")
+counts <- rio::import("https://docs.google.com/spreadsheets/d/1hAgFXKzxrCC4O_4nqNlrid1uZYHNQbwf/edit#gid=177225701") %>%
+  filter(country_iso != "sum") %>%
+  select(-x2020)
 
 ## read in UN population data
 population <- rio::import("https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/EXCEL_FILES/1_Population/WPP2019_POP_F01_1_TOTAL_POPULATION_BOTH_SEXES.xlsx")
