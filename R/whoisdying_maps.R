@@ -255,20 +255,52 @@ world_counts_source <- world_counts_source %>%
 # world_counts <- world_counts %>%
 #   filter(date >= earliest_deaths)
 
+## define our start and end dates
 start_date <- as.Date("2020-03-21")
 end_date   <- as.Date("2020-10-31")
 
+## filter for reports on the dates of interest (remember cumullative counts)
 world_counts <- world_counts %>%
   filter(date %in% c(
              start_date,
              end_date))
 
 
+## create the amount at end_date by substracting amount at start_date
 indicator_counts <- world_counts %>%
   group_by(id) %>%
   summarise(confirmed = confirmed - lag(confirmed),
             deaths    = deaths - lag(deaths),
             population = population) %>%
+  ## drop start_date row
   filter(!is.na(confirmed)) %>%
+  ## calculate inc and cfr
   mutate(incidence = confirmed / population * 100000,
          cfr = deaths / confirmed * 100)
+
+## label data from johns hopkins
+names(indicator_counts) <- paste0(names(indicator_counts), "_jhu")
+
+## combine with our counts data
+comparisson <- left_join(
+  select(
+    counts,
+    country_iso,
+    confirmed,
+    dead,
+    population = x2020,
+    incidence,
+    cfr = CFR
+  ),
+  indicator_counts,
+  by = c("country_iso" = "id_jhu")
+)
+
+## sort columns so can compare next to eachother
+comparisson <- comparisson %>%
+  select(country_iso,
+         contains("confirmed"),
+         contains("dea"),
+         contains("population"),
+         contains("incidence"),
+         contains("cfr"))
