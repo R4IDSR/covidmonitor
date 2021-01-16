@@ -223,4 +223,52 @@ ggsave(plot = full_map,
 
 
 
+################################################################################
+## comparing death counts with external databases
+library("COVID19")
 
+## download data (cleaned so NAs are replaced with zero)
+world_counts <- covid19(raw = FALSE)
+
+## get the sources of data for each
+world_counts_source <- covid19cite(world_counts)
+
+## only keep countries of interest for counts
+world_counts <- world_counts %>%
+  filter(id %in% counts$country_iso)
+
+## only keep countries of interest for sources
+world_counts_source <- world_counts_source %>%
+  filter(iso_alpha_3 %in% counts$country_iso)
+
+## find first non missing date with death counts
+# earliest_deaths <- world_counts %>%
+#   group_by(id) %>%
+#   filter(!is.na(deaths)) %>%
+#   summarise(first = first(date)) %>%
+#   summarise(first = min(first)) %>%
+#   pull() %>%
+#   as.Date()
+
+
+## filter based on that date
+# world_counts <- world_counts %>%
+#   filter(date >= earliest_deaths)
+
+start_date <- as.Date("2020-03-21")
+end_date   <- as.Date("2020-10-31")
+
+world_counts <- world_counts %>%
+  filter(date %in% c(
+             start_date,
+             end_date))
+
+
+indicator_counts <- world_counts %>%
+  group_by(id) %>%
+  summarise(confirmed = confirmed - lag(confirmed),
+            deaths    = deaths - lag(deaths),
+            population = population) %>%
+  filter(!is.na(confirmed)) %>%
+  mutate(incidence = confirmed / population * 100000,
+         cfr = deaths / confirmed * 100)
