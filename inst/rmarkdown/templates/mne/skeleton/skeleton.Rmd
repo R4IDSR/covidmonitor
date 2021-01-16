@@ -1,0 +1,171 @@
+---
+title: "Monitoring and Evaluation the COVID-19 Pandemic in the African region"
+author: "Planning and Health Information Pillar"
+date: "`r format(Sys.time(), '%A %d %B %Y')`"
+output:
+  html_document: default
+  word_document: default
+---
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// setup \\\
+--------------------------------------------------------------------------------
+Several packages are required for different aspects of  analysis with *R*. 
+You will need to install these before starting. 
+These packages can be quite large and may take a while to download in the
+field. If you have access to a USB key with these packages, it makes sense to
+copy and paste the packages into your computer's R package library 
+(run the command .libPaths() to see the folder path). 
+For help installing packages, please visit https://r4epis.netlify.com/welcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r setup, include=FALSE, cache=F}
+
+# set options for rmarkdown 
+knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
+                      message = FALSE, # hide all messages in output
+                      warning = FALSE, # hide all warnings in output
+                      collapse = TRUE, # combine all source/output to single block
+                      fig.width = 20,  # define figure width
+                      fig.height = 8,  # define figure height
+                      dpi = 300,       # define figure definitions
+                      cache = F)       # run all code chunks (even if repeated)
+
+
+## Installing required packages for this template
+required_packages <- c(
+                       "knitr",          # create output docs
+                       "here",           # find your files
+                       "rio",            # read in data
+                       "lubridate",      # work with dates
+                       "tsibble",        # for working with dates as time series
+                       "dplyr",          # clean/shape data
+                       "ggplot2",        # create plots
+                       "countrycode",    # recode country ISOs to full names
+                       "tidyr",          # clean/shape data
+                       "flextable"       # nicely formatted output tables
+                       )
+  
+for (pkg in required_packages) {
+  # install packages if not already present
+  if (!pkg %in% rownames(installed.packages())) {
+    install.packages(pkg)
+  }
+  # load packages to this current session 
+  library(pkg, character.only = TRUE)
+}
+
+
+
+## define a theme for ggplot (so all look similar) 
+epi_theme <- theme_classic() + 
+    theme(
+      text = element_text(size = 18, family = "Arial"), 
+      ## rotate x axis labels
+      axis.text.x  = element_text(angle = 45, vjust = 0.5),
+      axis.title   = element_text(color = "black", face = "bold"), 
+      legend.title = element_blank(), 
+      legend.text  = element_text(color = "black"), 
+      legend.position  = "bottom",
+      legend.direction = "horizontal",
+      ## colour and size the grid lines in the plot 
+      # panel.grid.minor = element_line(colour = "grey90", size = 0.5), 
+      panel.grid.major = element_line(colour = "grey90")
+      )
+```
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// define_current_week \\\
+--------------------------------------------------------------------------------
+ 
+This section is used to define your week of interest. It will be used later
+to filter your outputs. 
+You can also set the day which your epiweek starts on - the default for this
+is Monday. 
+Also define the country code of interest. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r define_current_week}
+
+## current week
+this_week <- as.Date("2020-11-30")
+
+## week number of current week
+num_week <- yearweek(this_week)
+
+## country of interest iso code 
+country_iso <- "STP"
+```
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// import_data \\\
+--------------------------------------------------------------------------------
+This chunk reads in all the data necessary as well as dictionaries. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r import_data}
+
+## define path to folder with raw data 
+data_folder <- here::here("data", "raw")
+
+## define path to folder with output 
+output_folder <- here::here("data", "clean")
+
+## read in the dataset of interest 
+mne_data <- merge_kpi(data_folder, 
+                      country_iso, 
+                      output_folder, 
+                      outputname = paste0("kpi_merged_", 
+                                           country_iso, 
+                                           "_",
+                                           this_week))
+
+```
+
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// clean_data \\\
+--------------------------------------------------------------------------------
+This chunk does basic data cleaning and filtering
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r clean_data}
+
+## fix the epi week variable 
+mne_data$epi_week <- yearweek(
+  paste0(
+    year(mne_data$date), " W", mne_data$epi_week)
+  )
+
+## drop the weeks after week of interest
+mne_data <- mne_data %>% 
+  filter(epi_week <= num_week)
+
+```
+ 
+ 
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// report_id \\\
+--------------------------------------------------------------------------------
+This chunk creates a table with the identifiers for this report, country, date 
+of report and epiweek. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r report_id}
+
+## define datframe 
+tibble("Country"        = countrycode(country_iso, origin = "iso3c", destination = "country.name"), 
+  "Date of report" = format(this_week, format = "%d %B %Y"), 
+  "Epiweek"        =  num_week) %>% 
+  mutate(across(.fns = as.character)) %>% 
+  pivot_longer(everything(), 
+                      names_to = "variable", 
+                      values_to = "values") %>% 
+  flextable()
+```
+
+
+

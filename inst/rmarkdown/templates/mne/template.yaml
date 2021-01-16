@@ -1,0 +1,4 @@
+name: WHO weekly M & E Covid-19 report
+description: >
+  An automated monitoring and evaluation report template for Covid-19
+create_dir: false
