@@ -6,7 +6,6 @@ big_data<-rio::import(here::here("inst", "Merged_linelist_2021-01-05.xlsx"), rea
 #as the output from the merge file is a .xlsx we can specify readxl =FALSE so the read.xlsx function will be used on the import instead
 #the read.xlsx functions requires the dependancy openxlsx
 
-
 big_data_clean<-big_data
 #read in all dates
 big_data_clean<-dplyr::mutate(big_data_clean, across(contains("date"), as.Date, origin= "1899-12-30"))
@@ -126,10 +125,19 @@ big_data_clean<-big_data_clean[ , -which(names(big_data_clean) %in% symptvars)]
 
 #patinfo_occus
 #list of words/ strings associated with healthcare
-occupation<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=1) %>% select(patinfo_occus)
-#remove accents from occupation column
-big_data_clean<-data.table(big_data_clean)
-#Create a column that creates TRUE for health care worker after a match or partial match with list above
+occupation<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=1) %>% select(patinfo_occus) %>% na.omit()
+not_occupation<-rio::import(here::here("inst/","Cleaning_dict_alice.xlsx"), which=1) %>% select(not_occupation) %>% na.omit()
+#ensuring cleaning of "non occupations"
+big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "['?]|[[:punct:]]", replacement = "", ignore.case = T, perl = T))
+big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "[0-9]", replacement = "", ignore.case = T, perl = T))
+big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "^[a-zA-Z]$", replacement = "", ignore.case = T, perl = T))
+
+big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "\r\n", replacement = "", fixed = T))
+big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "\\s+", replacement = " ", ignore.case = T))
+big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "\\s+$", replacement = "", ignore.case = T))
+big_data_clean$patinfo_occus<- ifelse(big_data_clean$patinfo_occus=="",NA,big_data_clean$patinfo_occus)
+big_data_clean$patinfo_occus <- ifelse(grepl(paste0("(?i)^",not_occupation$not_occupation, "$", collapse="|"),big_data_clean$patinfo_occus, ignore.case = T),NA,big_data_clean$patinfo_occus)
+#Create a column that creates TRUE for health care worker after a match or partial match with list
 big_data_clean$hcw <- grepl(paste(occupation$patinfo_occus, collapse="|"),big_data_clean$patinfo_occus, ignore.case = T)
 #replce if occupation was missing
 big_data_clean$hcw<- ifelse(is.na(big_data_clean$patinfo_occus),NA,big_data_clean$hcw) #this column is if healthcare workerso use in analysis as this
@@ -155,9 +163,8 @@ big_data_clean$patcourse_status_alive<-ifelse(big_data_clean$patcourse_status_al
 
 
 #identifying those alive and recovered
-big_data_clean$patcourse_status_recovered<-grepl(paste(recovered$recovered, collapse="|"),big_data_clean$patcourse_status, ignore.case = T)
-big_data_clean$patcourse_status_recovered<-ifelse(big_data_clean$patcourse_status_recovered==FALSE,NA,big_data_clean$patcourse_status_recovered)
-big_data_clean$patcourse_status_recovered<-ifelse(big_data_clean$patcourse_status_recovered==TRUE,"recovered",big_data_clean$patcourse_status_recovered)
+big_data_clean$patcourse_status_recovered<-ifelse(grepl(paste(recovered$recovered, collapse="|"),big_data_clean$patcourse_status, ignore.case = T),"recovered",NA)
+big_data_clean$patcourse_status_recovered<-ifelse(grepl(paste(recovered$recovered, collapse="|"),big_data_clean$patcurrent_status, ignore.case = T),"recovered",big_data_clean$patcourse_status_recovered)
 big_data_clean$patcourse_status_recovered<-ifelse(is.na(big_data_clean$patcourse_status_recovered) & !is.na(big_data_clean$patcourse_datedischarge),"recovered",big_data_clean$patcourse_status_recovered)
 
 big_data_clean$patcourse_status<- ifelse(!is.na(big_data_clean$patcourse_status) & !is.na(big_data_clean$patcourse_status_dead), big_data_clean$patcourse_status_dead,big_data_clean$patcourse_status)
@@ -286,6 +293,7 @@ big_data_comorbs$renal_disease<-apply(big_data_comorbs, 1, function(x) any(grepl
 big_data_comorbs$drepanocytosis<-apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$Drepanocytosis), collapse="|"),x,ignore.case = T)))
 big_data_comorbs$chronic_pulmonary<-apply(big_data_comorbs, 1, function(x) any(grepl(paste0(na.omit(comorbs$`Chronic pulmonary disease`), collapse="|"),x,ignore.case = T)))
 big_data_comorbs$cancer<-apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$Cancer), collapse="|"),x,ignore.case = T)))
+big_data_comorbs$tuberculosis<-apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$Tuberculosis), collapse="|"),x,ignore.case = T)))
 big_data_comorbs$other_comorb<-apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$Other), collapse="|"),x,ignore.case = T)))
 
 #changes all TRUE to 1 and FALSE to NA ftom grepl
@@ -304,19 +312,30 @@ big_data_comorbs$comcond_preexist1<-ifelse(is.na(big_data_comorbs$comcond_preexi
 
 #If RowSums=0 then there are no ncd specified
 big_data_comorbs<-dplyr::mutate(big_data_comorbs, across(c(-comcond_preexist1,-comcond_preexist), as.numeric))
-big_data_comorbs$comcond_preexsist_yesno<-rowSums(select(big_data_comorbs, -c("comcond_preexist1","comcond_preexist", "id")), na.rm = T)
-big_data_comorbs$not_specified_comorb<-ifelse(big_data_comorbs$comcond_preexist1=="yes" & is.na(big_data_comorbs$comcond_preexist) & big_data_comorbs$comcond_preexsist_yesno==0 | grepl(paste(na.omit(comorbs$`Not Specified`), collapse="|"),big_data_comorbs$comcond_preexist,ignore.case = T),1,NA)
+big_data_comorbs$comcond_preexsist_yesno<-rowSums(select(big_data_comorbs, diabetes, asthma, hypertension,cancer,
+                                                         renal_disease,cardiovascular_disease,obesity,tuberculosis,drepanocytosis,chronic_pulmonary, other_comorb), na.rm = T)
 
+big_data_comorbs$not_specified_comorb<-ifelse(big_data_comorbs$comcond_preexist1=="yes" & is.na(big_data_comorbs$comcond_preexist) & big_data_comorbs$comcond_preexsist_yesno==0,1,NA)
+big_data_comorbs$not_specified_comorb<-ifelse(big_data_comorbs$comcond_preexist1=="yes" & is.na(big_data_comorbs$not_specified_comorb) & grepl(paste(na.omit(comorbs$`Not Specified`), collapse="|"),big_data_comorbs$comcond_preexist,ignore.case = T),1,big_data_comorbs$not_specified_comorb)
+
+big_data_comorbs$comcond_preexsist_yesno<-NULL #removing this placeholder variable to redo below including not specified
+
+big_data_comorbs$comcond_preexsist_count<-rowSums(select(big_data_comorbs, c(diabetes, asthma, hypertension,cancer,
+                                                                             renal_disease,cardiovascular_disease,obesity,tuberculosis,drepanocytosis,chronic_pulmonary, not_specified_comorb, other_comorb)), na.rm = T)
 
 #variable correction for yes/no ncd based on previous dictionary
 #if no ncd were picked up then the yes/no variable is changed to no
 #if ncd was picked up then yes/no variable is changed to yes
+# if missing yes/no variable it is changed to not given
 #i have added these as a separate variable _alice for comparison
+big_data_comorbs$comcond_preexist1_alice<-ifelse(big_data_comorbs$comcond_preexsist_count==0 & is.na(big_data_comorbs$comcond_preexist) & is.na(big_data_comorbs$comcond_preexist1),"not given", NA)
 
-big_data_comorbs$comcond_preexist1_alice<-big_data_comorbs$comcond_preexist1
-big_data_comorbs$comcond_preexist1_alice<-ifelse(is.na(big_data_comorbs$comcond_preexist1_alice) & big_data_comorbs$not_specified_comorb==1,"yes",big_data_comorbs$comcond_preexist1_alice)
-big_data_comorbs$comcond_preexist1_alice<-ifelse(big_data_comorbs$comcond_preexsist_yesno>0 & is.na(big_data_comorbs$comcond_preexist1_alice), "yes", big_data_comorbs$comcond_preexist1_alice)
-big_data_comorbs$comcond_preexist1_alice<-ifelse(!grepl("(?i)^yes$|(?i)^no$",big_data_comorbs$comcond_preexist1_alice, perl=T), NA, big_data_comorbs$comcond_preexist1_alice)
+big_data_comorbs$comcond_preexist1_alice<-ifelse(big_data_comorbs$comcond_preexsist_count>0 & is.na(big_data_comorbs$comcond_preexist1_alice),"yes",big_data_comorbs$comcond_preexist1_alice)
+big_data_comorbs$comcond_preexist1_alice<-ifelse(big_data_comorbs$comcond_preexsist_count==0 &  is.na(big_data_comorbs$comcond_preexist1_alice) & big_data_comorbs$comcond_preexist1=="no","no",big_data_comorbs$comcond_preexist1_alice)
+#if no comorbs identified from string matching and if they had in column yes change this to a no because it is not a comorb
+big_data_comorbs$comcond_preexist1_alice<-ifelse(big_data_comorbs$comcond_preexsist_count==0 &  is.na(big_data_comorbs$comcond_preexist1_alice) & big_data_comorbs$comcond_preexist1=="yes","no",big_data_comorbs$comcond_preexist1_alice)
+# for those with missing yes/no byt entered in specify variable but it is not a comorbidity as identified from the previous string mtching
+big_data_comorbs$comcond_preexist1_alice<-ifelse(big_data_comorbs$comcond_preexsist_count==0 &  is.na(big_data_comorbs$comcond_preexist1_alice) & is.na(big_data_comorbs$comcond_preexist1) & !is.na(big_data_comorbs$comcond_preexist),"no",big_data_comorbs$comcond_preexist1_alice)
 
 
 ###

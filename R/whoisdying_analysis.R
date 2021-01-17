@@ -56,16 +56,25 @@ big_data_analyse<-big_data_clean
 big_data_analyse <-big_data_analyse %>% filter(country_iso!="DZA")
 
 ###########Filtering the data set ###########
+dates<- big_data_analyse %>%  group_by(country_iso,country_full) %>%
+  summarise(minreport=format(min(report_date, na.rm = T), "%Y %B %d"),
+            maxreport=format(max(report_date, na.rm = T), "%Y %B %d"))
+
 
 #define date we are reporting to
 dateofreport<-as.Date("2020-10-31", origin= "1899-12-30")
 #filter for cases before dateofreport variable ie 26/10/2020
+startdateofreport<-as.Date("2020-03-21", origin= "1899-12-30")
+
+
+big_data_analyse<-dplyr::mutate(big_data_analyse, across(c("patcourse_datedeath","patcourse_datedischarge"), ~ ifelse(country_iso=="TCD",  as.Date(.,origin= "1970-01-01") + lubridate::years(4), as.Date(.,origin= "1970-01-01"))))
 
 big_data_analyse<-dplyr::mutate(big_data_analyse, across(c("patcourse_datedeath","patcourse_datedischarge"), as.Date, origin= "1970-01-01")) %>%
-  filter(report_date<=dateofreport)
+  filter(report_date<=dateofreport & report_date>=startdateofreport)
 
 #remove countries that do not have such reports up until 2020-10-31
 big_data_analyse<- big_data_analyse %>% group_by(country_iso) %>% mutate(lastreport_ =ifelse(max(report_date, na.rm = T)==dateofreport,1,0))
+
 big_data_analyse<- big_data_analyse %>% group_by(country_iso) %>% filter(lastreport_==1)
 
 
@@ -106,7 +115,7 @@ big_data_analyse$startdate<-if_else(is.na(big_data_analyse$startdate), big_data_
 big_data_analyse<-big_data_analyse %>% filter(!is.na(startdate) & !is.na(patcourse_status))
 big_data_analyse$enddate<-dplyr::if_else(big_data_analyse$patcourse_status=="dead",big_data_analyse$patcourse_datedeath,big_data_analyse$patcourse_datedischarge)
 big_data_analyse$enddate<-dplyr::if_else(big_data_analyse$patcourse_status=="alive" & is.na(big_data_analyse$enddate),dateofreport,big_data_analyse$enddate)
-big_data_analyse<-big_data_analyse %>% filter(startdate<=dateofreport & enddate<=dateofreport)
+big_data_analyse<-big_data_analyse %>% filter(!is.na(enddate))
 
 #Create binary variables for cox regression
 #1 denotes presence 0 deontes no presence OR not reported. Summary table displays misssingness for each variable used in cox regression
@@ -119,6 +128,8 @@ big_data_analyse$pregant_binary<-ifelse(is.na(big_data_analyse$pregnancy) & big_
 big_data_analyse$patinfo_sex_binary<-ifelse(!is.na(big_data_analyse$patinfo_sex) & big_data_analyse$patinfo_sex=="M",1,
                                                ifelse(is.na(big_data_analyse$patinfo_sex),NA,0))
 
+big_data_analyse$comcond_preexsist_count_top10<-ifelse(big_data_analyse$comcond_preexist1_alice_binary==0,"no/not reported",big_data_analyse$comcond_preexsist_count_top10)
+
 
 #define failure
 big_data_analyse$vlfail<-ifelse(big_data_analyse$patcourse_status=="dead",1,0)
@@ -128,9 +139,9 @@ big_data_analyse$perstime <- as.numeric(difftime(big_data_analyse$enddate, big_d
 big_data_analyse<- big_data_analyse %>% filter(big_data_analyse$perstime>0)
 #Add the survial object as variable to your dataset which is survival time (for kaplan-meier and cox)
 
-
-
 big_data_analyse<-big_data_analyse %>% filter(!is.na(vlfail) & !is.na(patinfo_ageonset) & !is.na(patinfo_sex_binary) & !is.na(comcond_preexist1_alice_binary) & !is.na(capital_final_binary) & !is.na(hcw_binary))
+
+
 
 
 #make copy dataset to use for cox
@@ -204,18 +215,18 @@ all_sexage<-big_data_analyse %>%  filter(!is.na(patinfo_ageonset) & !is.na(patin
             #total_reported=length(!is.na(patinfo_id)), #everyone in the line list?
             dead=length(grep("Dead",patcourse_status, ignore.case = T)),
             alive=length(grep("alive",patcourse_status, ignore.case = T)),
-            hwc_confirmed=sum(hcw_all, na.rm=T)) %>%
-  mutate(CFR=round((dead/confirmed)*100, digits = 0),
-         hcwrate= round((hwc_confirmed/(confirmed))*100, digits = 0),
+            hwc_confirmed=sum(hcw_all, na.rm=T)) %>% #ungroup() %>% #ungroup so calculate the percentages with the denominator as the total of male and female
+  mutate(CFR=round((dead/confirmed)*100, digits = 2),
+         hcwrate= round((hwc_confirmed/(confirmed))*100, digits = 2),
          confirmed_perc=confirmed/sum(confirmed, na.rm = T)*100,
          dead_perc=dead/sum(dead, na.rm = T)*100)
 
 all_sexage_wide<-tidyr::pivot_wider(all_sexage,agegroup,names_from= patinfo_sex,values_from=c(confirmed,alive,dead,hwc_confirmed,CFR,hcwrate))
 
-summary_sexage_wide<-tidyr::pivot_wider(all_sexage,agegroup,names_from= patinfo_sex,values_from=confirmed) %>% mutate(male_perc=(`M`/(`M`+`F`))*100 , agegroup_perc=((`M`+`F`)/sum(`M`+`F`, na.rm = T))*100) %>%
+summary_sexage_wide<-tidyr::pivot_wider(all_sexage,agegroup,names_from= patinfo_sex,values_from=confirmed) %>% mutate( total= `M`+`F`,male_perc=(`M`/(`M`+`F`))*100 , agegroup_perc=((`M`+`F`)/sum(`M`+`F`, na.rm = T))*100) %>%
   openxlsx::write.xlsx("whoisddying_manuscript/age_sex_count.xlsx")
 
-summary_sexage_dead_wide<-tidyr::pivot_wider(all_sexage,agegroup,names_from= patinfo_sex,values_from=dead) %>% mutate(male_perc=(`M`/(`M`+`F`))*100 , agegroup_perc=((`M`+`F`)/sum(`M`+`F`, na.rm = T))*100) %>%
+summary_sexage_dead_wide<-tidyr::pivot_wider(all_sexage,agegroup,names_from= patinfo_sex,values_from=dead) %>% mutate(total= `M`+`F`,male_perc=(`M`/(`M`+`F`))*100 , agegroup_perc=((`M`+`F`)/sum(`M`+`F`, na.rm = T))*100) %>%
   openxlsx::write.xlsx("whoisddying_manuscript/age_sex_deaths_count.xlsx")
 
 
@@ -266,12 +277,7 @@ table(ncd_all_chi$comcond_preexist1_alice,ncd_all_chi$patcourse_status)
 ######
 
 #ncds by type
-#again only interest in countried that entered ncds,
-#this filtering shouldnt matter for this step due to the way each ncd variable has been created and also comcond_preexsist_alice_1 created
-#as if any of the comorbidities were entered and detected using the string match, comcond_preexsist_alice_1 was changed to yes
-#in teh ncd columns a 1 denoted the disease presence and is NA everywere else so counting up only thise that reported anyway, but for the sake of
-#demonstarting numbers entered into the ncd analysis i have filtered as above (which ultimately removed UGA)
-ncd_type_count<-big_data_analyse %>% group_by(country_iso) %>% filter(length(unique(as.list(comcond_preexist1_alice)))>1)
+ncd_type_count<-big_data_analyse
 
 diabetes<- ncd_type_count %>% group_by(diabetes) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
                                                                  dead=length(grep("Dead",patcourse_status, ignore.case = T)),
@@ -343,10 +349,10 @@ ncd_type<-do.call("rbind",list(diabetes,hta,asthma,cvd,cancer, obesity,tb,pd,rd,
 
 openxlsx::write.xlsx(ncd_type, "whoisddying_manuscript/ncd_type_table.xlsx")
 
-ncd_oneormore<-big_data_analyse %>% filter(comcond_preexist1_alice=="yes") %>% group_by(as.factor(comcond_preexsist_count_top10)) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
-                                                             dead=length(grep("Dead",patcourse_status, ignore.case = T)),
+ncd_oneormore<-big_data_analyse %>% filter(comcond_preexsist_count_top10!=0) %>% group_by(as.factor(comcond_preexsist_count_top10)) %>% summarise(confirmed=length(grep("Confirmed",report_classif_alice,ignore.case = T)),
+                                                             n_dead=length(grep("Dead",patcourse_status, ignore.case = T)),
                                                              alive=length(grep("alive",patcourse_status, ignore.case = T))) %>%
-  mutate(CFR=round((dead/confirmed)*100, digits = 2))
+  mutate(CFR=round((dead/confirmed)*100, digits = 2)) %>% rename("Number.of.Comorbidities"=1)
 openxlsx::write.xlsx(ncd_oneormore, "whoisddying_manuscript/ncd_count.xlsx")
 
 
@@ -371,7 +377,7 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
 
 
 # #one way for combination plotting
-
+#
 # combanalysis<-ncd_combin_new %>% mutate(
 #   # combine the variables into one, using paste() with a semicolon separating any values
 #   all_comors = paste(diabetes, asthma, hypertension,cancer,
@@ -379,12 +385,12 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
 #
 #   # make a copy of all_symptoms variable, but of class "list" (which is required to use ggupset() in next step)
 #   all_comors_list = as.list(strsplit(all_comors, "; "))
-# )
+#  )
 # ggplot(combanalysis,
 #        aes(x=all_comors_list)) +
 #   geom_bar() +
 #   ggupset::scale_x_upset(reverse = FALSE,
-#                 n_intersections = 10,
+#                 n_intersections = 40,
 #                 sets = c("diabetes", "asthma", "hypertension", "obesity", "cardiovascular_disease", "renal_disease", "drepanocytosis","chronic_pulmonary", "cancer", "tuberculosis")
 #   )+
 #   labs(title = "Comorbidities",
@@ -395,11 +401,27 @@ openxlsx::write.xlsx(test, "whoisddying_manuscript/most_common_combinations.xlsx
 
 
 #UpsetR way
-combanalysis_2<-as.data.frame(ncd_combin) %>% mutate(across(c(diabetes, asthma, hypertension, obesity, cardiovascular_disease, renal_disease, drepanocytosis,chronic_pulmonary, cancer, tuberculosis), ~ifelse(is.na(.),0,.))) %>%
+#taking only those dead
+combanalysis_2_dead<- big_data_analyse %>% filter(comcond_preexist1_alice=="yes" & comcond_preexsist_count_top10>0 & vlfail==1) %>%
+  mutate(across(c(diabetes, asthma, hypertension, obesity, cardiovascular_disease, renal_disease, drepanocytosis,chronic_pulmonary, cancer, tuberculosis), ~ifelse(is.na(.),0,.))) %>%
   rename(c("Cardiovascular Disease"=cardiovascular_disease, "Renal Disease"=renal_disease,"Chronic Pulmonary Disease"=chronic_pulmonary)) %>%
-  rename_all(tools::toTitleCase)
-UpSetR::upset(
-  select(combanalysis_2, Diabetes, Asthma, Hypertension, Obesity, `Cardiovascular Disease`, `Renal Disease`, Drepanocytosis,`Chronic Pulmonary Disease`, Cancer, Tuberculosis),
+  rename_all(tools::toTitleCase) %>% as.data.frame()
+
+combanalysis_2_alivee<- big_data_analyse %>% filter(comcond_preexist1_alice=="yes" & comcond_preexsist_count_top10>0 & vlfail==0) %>%
+  mutate(across(c(diabetes, asthma, hypertension, obesity, cardiovascular_disease, renal_disease, drepanocytosis,chronic_pulmonary, cancer, tuberculosis), ~ifelse(is.na(.),0,.))) %>%
+  rename(c("Cardiovascular Disease"=cardiovascular_disease, "Renal Disease"=renal_disease,"Chronic Pulmonary Disease"=chronic_pulmonary)) %>%
+  rename_all(tools::toTitleCase) %>% as.data.frame()
+
+#all cases
+combanalysis_2_cases<- big_data_analyse %>% filter(comcond_preexist1_alice=="yes" & comcond_preexsist_count_top10>0) %>%
+  mutate(across(c(diabetes, asthma, hypertension, obesity, cardiovascular_disease, renal_disease, drepanocytosis,chronic_pulmonary, cancer, tuberculosis), ~ifelse(is.na(.),0,.))) %>%
+  rename(c("Cardiovascular Disease"=cardiovascular_disease, "Renal Disease"=renal_disease,"Chronic Pulmonary Disease"=chronic_pulmonary)) %>%
+  rename_all(tools::toTitleCase) %>% as.data.frame()
+
+#plotting for all dead as more relaven
+
+plotobj_cases<-UpSetR::upset(
+  select(combanalysis_2_cases, Diabetes, Asthma, Hypertension, Obesity, `Cardiovascular Disease`, `Renal Disease`, Drepanocytosis,`Chronic Pulmonary Disease`, Cancer, Tuberculosis),
   sets = c("Diabetes", "Asthma", "Hypertension", "Obesity", "Cardiovascular Disease", "Renal Disease", "Drepanocytosis","Chronic Pulmonary Disease", "Cancer", "Tuberculosis"),
   order.by =  "freq",
   #group.by = "degree",
@@ -412,7 +434,70 @@ UpSetR::upset(
   set_size.show = TRUE,
   mainbar.y.label = "Comorbidity combinations",
   nintersects=40,
-  sets.x.label = "Patients with \n comorbidity", text.scale = 2,set_size.angles = 0)
+  sets.x.label = "Patients with comorbidity", text.scale = 1.75,set_size.angles = 0)
+
+plotobj_dead<-UpSetR::upset(
+  select(combanalysis_2_dead, Diabetes, Asthma, Hypertension, Obesity, `Cardiovascular Disease`, `Renal Disease`, Drepanocytosis,`Chronic Pulmonary Disease`, Cancer, Tuberculosis),
+  sets = c("Diabetes", "Asthma", "Hypertension", "Obesity", "Cardiovascular Disease", "Renal Disease", "Drepanocytosis","Chronic Pulmonary Disease", "Cancer", "Tuberculosis"),
+  order.by =  "freq",
+  #group.by = "degree",
+  sets.bar.color = mycolors[1:10], # optional colors
+  empty.intersections = "on",
+  #nsets = 5,
+  number.angles = 0,
+  point.size = 3.5,
+  line.size = 2,
+  set_size.show = TRUE,
+  mainbar.y.label = "Comorbidity combinations",
+  nintersects=40,
+  sets.x.label = "Patients with comorbidity", text.scale = 1.75,set_size.angles = 0)
+
+plot.ls <- list(
+  A = plotobj_cases ,
+  B = plotobj_dead
+)
+for (v in names(plot.ls)) {
+  print(plot.ls[[v]])
+  grid::grid.text(v, x = 0.2, y=0.97, gp = grid::gpar(fontsize = 20))
+  grid::grid.edit('arrange', name = v)
+  vp <- grid::grid.grab()
+  plot.ls[[v]] <- vp
+}
+
+gridExtra::grid.arrange(grobs = plot.ls, ncol = 1, clip=F)
+
+
+
+#weighted cox regression for number of comorbidities
+failure_comorbs<- big_data_analyse %>% filter(comcond_preexsist_count_top10!="0") %>% mutate(across(comcond_preexsist_count_top10, factor,  levels=c("no/not reported","1","2","3","4")))
+cox_w_combos <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~comcond_preexsist_count_top10 , data = failure_comorbs)
+
+
+univ_combo<-data.frame(`Number of Comorbidities`= c("No/Not reported", "1", "2","3","4"),
+                                 N=c(nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="no/not reported", ]),nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="1", ]),nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="2", ]),nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="3", ]),nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="4", ])),
+                                 n_dead=c(nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="no/not reported" & failure_comorbs$vlfail==1,]),nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="1" & failure_comorbs$vlfail==1,]),nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="2" & failure_comorbs$vlfail==1,]),nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="3" & failure_comorbs$vlfail==1,]), nrow(failure_comorbs[failure_comorbs$comcond_preexsist_count_top10=="4" & failure_comorbs$vlfail==1,])),
+                                 n_perstime=c(sum(failure_comorbs$perstime[failure_comorbs$comcond_preexsist_count_top10=="no/not reported"]),sum(failure_comorbs$perstime[failure_comorbs$comcond_preexsist_count_top10=="1"]),sum(failure_comorbs$perstime[failure_comorbs$comcond_preexsist_count_top10=="2"]),sum(failure_comorbs$perstime[failure_comorbs$comcond_preexsist_count_top10=="3"]),sum(failure_comorbs$perstime[failure_comorbs$comcond_preexsist_count_top10=="4"])),
+                                 HR=c(" ",round(exp(cox_w_combos$coefficients[1]), digits = 4),round(exp(cox_w_combos$coefficients[2]), digits = 4),round(exp(cox_w_combos$coefficients[3]), digits = 4),round(exp(cox_w_combos$coefficients[4]), digits = 2)),
+                                 `95% CI`=c(" ",paste((round(cox_w_combos$ci.lower[1], digits=2)),unlist(round(cox_w_combos$ci.upper[1], digits = 2)), sep=","),
+                                            paste((round(cox_w_combos$ci.lower[2], digits=2)),unlist(round(cox_w_combos$ci.upper[2], digits = 2)), sep=","),
+                                            paste((round(cox_w_combos$ci.lower[3], digits=2)),unlist(round(cox_w_combos$ci.upper[3], digits = 2)), sep=","),
+                                            paste((round(cox_w_combos$ci.lower[4], digits=2)),unlist(round(cox_w_combos$ci.upper[4], digits = 2)), sep=",")),
+                                 `p-value`=c(" ", round(cox_w_combos$prob[1], digits = 3),round(cox_w_combos$prob[2], digits = 3),round(cox_w_combos$prob[3], digits = 3),round(cox_w_combos$prob[4], digits = 3)),
+                                 stringsAsFactors=FALSE)
+
+
+failure_comorbs_N<-as.character(nrow(failure_comorbs))
+failure_comorbs_dead<-as.character(failure_comorbs[vlfail==1])
+merged_comb<-merge(ncd_oneormore,univ_combo, by="Number.of.Comorbidities", all=T) %>% select(-c(confirmed, dead,alive)) %>%
+  arrange(Number.of.Comorbidities)  %>%flextable() %>% set_header_labels(
+    values = c(Number.of.Comorbidities="Number of Comorbidities",n_dead="Dead (N)", n_perstime="Time (days)",HR="aHR", X95..CI="95% CI", p.value.x="p-value"), top = T)
+
+merged_comb  <- merged_comb %>%
+  footnote(i = 1, j = 6:7,
+           value = as_paragraph(
+             c("aHR = average Hazard Ratio, CI = Confidence Interval")),
+           ref_symbols = c("*"), part="header") %>% fontsize(size = 14, part = "header") %>% fontsize(size = 13, part = "body") %>% fontsize(size = 12, part = "footer") %>% flextable::save_as_docx(path="whoisddying_manuscript/univaritate_numbercomorbs.docx")
+
 
 
 ##################################################
@@ -430,12 +515,14 @@ UpSetR::upset(
   ggsave("whoisddying_manuscript/age_sex_death.png", width=20, height = 15)
 
   p1<-age_pyramid(all_sexage,agegroup, split_by = patinfo_sex, count =confirmed_perc ) + pub_theme4 + scale_fill_manual(values = mycolors[c(2,10)]) + labs(y="% of cases", x= "Age group", fill="Sex")
-  ggsave("whoisddying_manuscript/age_sex_cases_pyramid.png", width=20, height = 15)
+   ggsave("whoisddying_manuscript/age_sex_cases_pyramid_percentageallcasesUSE.png", width=20, height = 15)
   p2<-age_pyramid(all_sexage,agegroup, split_by = patinfo_sex, count =dead_perc ) + pub_theme4 + scale_fill_manual(values = mycolors[c(2,10)]) + labs(y="% of deaths", x= "Age group", fill="Sex")
-  ggsave("whoisddying_manuscript/age_sex_death_pyramid.png", width=20, height = 15)
+  ggsave("whoisddying_manuscript/age_sex_death_pyramid_percentagealldedUSE.png", width=20, height = 15)
 
-
-
+  agesexcomb <- ggarrange(p1, p2,
+                      labels = c("A", "B"),
+                      ncol = 2, nrow = 1)
+  ggsave("whoisddying_manuscript/age_sex_combinedfigure.png", agesexcomb,width=25, height = 15)
   #cfr
   g3<-ggplot(cfr_bysexage,aes(agegroup,CFR,group=patinfo_sex, fill=patinfo_sex)) + geom_point(aes(colour=patinfo_sex, group=patinfo_sex), size=3, show.legend = F) + geom_line(aes(colour=patinfo_sex, group=patinfo_sex))+
     pub_theme4 + scale_colour_manual(values = mycolors[c(2,10)]) + labs(y="CFR (%)", x= "Age group", colour="Sex") +
@@ -478,8 +565,6 @@ UpSetR::upset(
 
   ggsave("whoisddying_manuscript/hcw_cfr_barplot.png", width=20, height = 15)
 
-
-
 ###### cox regression time ot death
 #dataset used in failure
   failure<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, pregant_binary,SurvObj)
@@ -489,18 +574,26 @@ UpSetR::upset(
   sjlabelled::set_label(failure$capital_final_binary) <- "Residence in capital city"
   sjlabelled::set_label(failure$hcw_binary) <- "Health Care Worker"
 
-  summary_N_cox<-timetodeath_numbers %>% select(patinfo_sex, patinfo_ageonset, hcw,capital_final,comcond_preexist1_alice, vlfail) %>%mutate(across(-c(patinfo_ageonset),as.factor))
-
-  sjlabelled::set_label(summary_N_cox$vlfail) <- "Mortality"
+  summary_N_cox<-timetodeath_numbers %>% select(patinfo_sex, patinfo_ageonset, hcw,capital_final,comcond_preexist1_alice, vlfail) %>% mutate(across(-c(patinfo_ageonset),as.character)) %>% replace(is.na(.), "Not reported") %>% mutate(across(-c(patinfo_ageonset),as.factor))
+  levels(summary_N_cox$patinfo_sex) <- c('Female', 'Males')
+  levels(summary_N_cox$hcw) <- c('No', 'Not reported','Yes')
+  levels(summary_N_cox$capital_final) <- c('No', 'Not reported','Yes')
+  levels(summary_N_cox$comcond_preexist1_alice) <- c('No', 'Not reported','Yes')
+  levels(summary_N_cox$vlfail)<- c("Alive", "Dead")
   sjlabelled::set_label(summary_N_cox$patinfo_ageonset) <- "Age"
   sjlabelled::set_label(summary_N_cox$patinfo_sex) <- "Sex (Male)"
   sjlabelled::set_label(summary_N_cox$comcond_preexist1_alice) <- "Presence of comorbidity"
   sjlabelled::set_label(summary_N_cox$capital_final) <- "Residence in capital city"
   sjlabelled::set_label(summary_N_cox$hcw) <- "Health Care Worker"
+  sjlabelled::set_label(summary_N_cox$vlfail) <- "Mortality"
 
-  #summary variable of N used in cox
-    summary_N_cox %>% gtsummary::tbl_summary() %>% gtsummary::as_flex_table() %>% flextable::save_as_docx(path="whoisddying_manuscript/summary_N_vars.docx")
+  #summary variables used in cox
+  summary<-summary_N_cox %>%select(-vlfail)  %>% tbl_summary() %>% italicize_levels()
+  summary_deaths<- summary_N_cox%>% tbl_summary(by= vlfail,percent = "row") %>% modify_footnote( update=everything() ~ "Statistic presented: n (Case Fatality Rate (%)); Median (IQR)") %>% italicize_levels() %>%
+    modify_header(stat_by = "**{level}**, N = {n} ({style_percent(p, symbol = TRUE)})") %>% modify_header(update = stat_1 ~ "**drop column**")
 
+  tbl_merge(list(summary,summary_deaths)) %>%  modify_spanning_header(everything() ~ NA_character_) %>% gtsummary::as_flex_table() %>% flextable::save_as_docx(path="whoisddying_manuscript/summary_N_vars_deadandCFR_DROPALIVECOL.docx")
+  #ensure drop Alive column post export
 
   ## univariate table
   univ <- gtsummary::tbl_uvregression(failure,survival::coxph,y=SurvObj, exponentiate = T)
@@ -521,11 +614,9 @@ UpSetR::upset(
   set_label(failure_2$capital_final_binary) <- "Residence in capital city"
   set_label(failure_2$hcw_binary) <- "Health Care Worker"
 
-  #cox <- survival::coxph(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary + patinfo_ageonset +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary + comcond_preexist1_alice_binary*patinfo_ageonset, data = failure_2)
+  cox <- survival::coxph(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary + patinfo_ageonset +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary + comcond_preexist1_alice_binary*patinfo_ageonset, data = failure_2)
   cox_updated <- survival::coxph(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary  +  hcw_binary + capital_final_binary + comcond_preexist1_alice_binary*patinfo_ageonset, data = failure_2)
-  #found interactions with comorbidity and age. Model has been updated accrodingly
-
-
+  #found interactions with comorbidity and age. Model has been updated accordingly as above
 
   multiv <- gtsummary::tbl_regression(cox_updated, exponentiate = TRUE)
 
@@ -593,6 +684,7 @@ ggsave("whoisddying_manuscript/forrect_updatedmodel.png")
                    `p-value`=c(unlist(round(cox_w_updated$prob, digits = 3))," "),
                    stringsAsFactors=FALSE)
 
+
 #univariate
   cox_w_sex <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ patinfo_sex_binary, data = failure_2)
   cox_w_age <- coxphw::coxphw(survival::Surv(perstime,vlfail) ~ patinfo_ageonset, data = failure_2)
@@ -603,8 +695,8 @@ ggsave("whoisddying_manuscript/forrect_updatedmodel.png")
 
   unitab <- data.frame(Characteristic= c("Sex (male)","Age (continuous)","Health care worker status","Residence in capital city status","Comorbidity status","Pregnancy"),
                        N=c(nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2),nrow(failure_2[failure_2$patinfo_sex_binary==0,])),
-                       n_dead=c(nrow(failure_2[failure_2$patinfo_sex_binary==1 & failure_2$vlfail==1,])," ",nrow(failure_2[failure_2$hcw_binary==1 & failure_2$vlfail==1,]),nrow(failure_2[failure_2$capital_final_binary==1 & failure_2$vlfail==1,]),nrow(failure_2[failure_2$comcond_preexist1_alice_binary==1 & failure_2$vlfail==1,])," "),
-                       n_perstime=c(sum(failure_2$perstime[failure_2$patinfo_sex_binary==1 & failure_2$vlfail==1])," ", sum(failure_2$perstime[failure_2$hcw_binary==1 & failure_2$vlfail==1]), sum(failure_2$perstime[failure_2$capital_final_binary==1 & failure_2$vlfail==1]),sum(failure_2$perstime[failure_2$comcond_preexist1_alice_binary & failure_2$vlfail==1]), " "),
+                       n_dead=c(nrow(failure_2[failure_2$patinfo_sex_binary==1 & failure_2$vlfail==1,])," ",nrow(failure_2[failure_2$hcw_binary==1 & failure_2$vlfail==1,]),nrow(failure_2[failure_2$capital_final_binary==1 & failure_2$vlfail==1,]),nrow(failure_2[failure_2$comcond_preexist1_alice_binary==1 & failure_2$vlfail==1,]),nrow(failure_2[failure_2$pregant_binary==1 & failure_2$vlfail==1,])),
+                       n_perstime=c(sum(failure_2$perstime[failure_2$patinfo_sex_binary==1])," ", sum(failure_2$perstime[failure_2$hcw_binary==1]), sum(failure_2$perstime[failure_2$capital_final_binary==1]),sum(failure_2$perstime[failure_2$comcond_preexist1_alice_binary==1]), sum(failure_2$perstime[failure_2$pregant_binary==1], na.rm = T)),
                        HR=c(round(exp(cox_w_sex$coefficients[1]), digits = 4),round(exp(cox_w_age$coefficients[1]), digits = 4),round(exp(cox_w_hcw$coefficients[1]), digits = 4),round(exp(cox_w_cap$coefficients[1]), digits = 2),round(exp(cox_w_com$coefficients[1]), digits = 2),round(exp(cox_w_preg$coefficients[1]), digits = 2)),
                          `95% CI`=c(paste((round(cox_w_sex$ci.lower[1], digits=2)),unlist(round(cox_w_sex$ci.upper[1], digits = 2)), sep=","),
                                     paste((round(cox_w_age$ci.lower[1], digits=2)),unlist(round(cox_w_age$ci.upper[1], digits = 2)), sep=","),
@@ -620,14 +712,14 @@ ggsave("whoisddying_manuscript/forrect_updatedmodel.png")
     arrange(Characteristic)   %>%flextable() %>% set_header_labels(
     values = c(Characterisitc="Characterisitc",n_dead="Dead (N)", n_perstime="Time (days)",N.x="N",HR.x="aHR*", X95..CI.x="95% CI*", p.value.x="p-value",HR.y="aaHR*", X95..CI.y="95% CI*", p.value.y="p-value"), top = T)
   combtab<-add_header_row(combtab,values = c(" ", " "," "," "," ", "Univariate", "Univariate"," ", "Multivariate","Multivariate"), top = T ) %>%  merge_h(part = "header") %>%
-    footnote(i = 1, j = 1:8,
+    footnote(i = c(1), j = c(5,6,8,9),
               value = as_paragraph(
-                c("aHR = average Hazard Ratio, CI = Confidence Interval, aaHR = average adjusted Hazard Ratio",
-                  "Females only")),
-              ref_symbols = c("*","†")) %>% fontsize(size = 14, part = "header") %>% fontsize(size = 13, part = "body") %>% fontsize(size = 12, part = "footer") %>% flextable::save_as_docx(path="whoisddying_manuscript/HR_univandmultiv_weighted.docx")
+                c("aHR = average Hazard Ratio, CI = Confidence Interval, aaHR = average adjusted Hazard Ratio")),
+              ref_symbols = c("*")) %>% fontsize(size = 14, part = "header") %>% fontsize(size = 13, part = "body") %>% fontsize(size = 12, part = "footer") %>% flextable::save_as_docx(path="whoisddying_manuscript/HR_univandmultiv_weighted.docx")
 
+  ##Counding / effect modifiers interation testing:
 ### testing interactions for each variable, Alex has extra code to complete a table which identifies if confounding or not, for now just eyeball
-
+  #Interaction if TRUE FALSE modes of each variable CIs dont overlap, crude will overlp with the FALSE mode if it is effect modifying
   fail_strat<-failure_2
   fail_strat$patinfo_ageonset_binary <-ifelse(fail_strat$patinfo_ageonset>=40,1,0)
   fail_strat$vlfail<-as.logical(fail_strat$vlfail)
@@ -649,13 +741,10 @@ ggsave("whoisddying_manuscript/forrect_updatedmodel.png")
   }
 
 
-
-
-
   ## survival times
   #just look at median time to death in those that died across the variables used in cox as we cannot use median survival time as 50% cohort not dead
   deadonly_timeto<-timetodeath_numbers %>% select(patinfo_sex_binary, patinfo_ageonset, hcw_binary,capital_final_binary,comcond_preexist1_alice_binary, vlfail, perstime) %>% mutate(across(-c(patinfo_ageonset,perstime),as.factor)) %>% filter(vlfail==1)
-  deadonly_timeto$age_binary60<-ifelse(!is.na(deadonly_timeto$patinfo_ageonset) & deadonly_timeto$patinfo_ageonset>=60,1,ifelse(is.na(deadonly_timeto$patinfo_ageonset),NA,0))
+  deadonly_timeto$age_binary60<-ifelse(deadonly_timeto$patinfo_ageonset>=60,1,0)
   deadonly_timeto$age_binary60<-as.factor(deadonly_timeto$age_binary60)
 
   kw.sex<-kruskal.test(perstime ~patinfo_sex_binary,deadonly_timeto)
@@ -663,28 +752,45 @@ ggsave("whoisddying_manuscript/forrect_updatedmodel.png")
   kw.hcw<-kruskal.test(perstime ~hcw_binary,deadonly_timeto)
   kw.captial<-kruskal.test(perstime ~capital_final_binary,deadonly_timeto)
   kw.comcond<-kruskal.test(perstime ~comcond_preexist1_alice_binary,deadonly_timeto)
+  levels(deadonly_timeto$patinfo_sex_binary) <- c('Female', 'Male')
+  levels(deadonly_timeto$age_binary60) <-c("<60", "≥60")
+  levels(deadonly_timeto$hcw_binary) <- c('No/Not reported','Yes')
+  levels(deadonly_timeto$capital_final_binary) <- c('No/Not reported', 'Yes')
+  levels(deadonly_timeto$comcond_preexist1_alice_binary) <- c('No/Not reported','Yes')
+  sjlabelled::set_label(deadonly_timeto$age_binary60) <- "Age"
+  sjlabelled::set_label(deadonly_timeto$patinfo_sex_binary) <- "Sex (Male)"
+  sjlabelled::set_label(deadonly_timeto$comcond_preexist1_alice_binary) <- "Presence of comorbidity"
+  sjlabelled::set_label(deadonly_timeto$capital_final_binary) <- "Residence in capital city"
+  sjlabelled::set_label(deadonly_timeto$hcw_binary) <- "Health Care Worker"
 
 
-  patinfo_sex_binary<- deadonly_timeto %>% filter(!is.na(patinfo_sex_binary)) %>% group_by(patinfo_sex_binary) %>% summarise(N=n(), median=paste0(median(perstime,na.rm = T),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.sex[3]), digits = 4)) %>%
-    add_row(patinfo_sex_binary = "Sex (Male)", N=NA, median = NA, pval = NA) %>% rename(Characteristic=patinfo_sex_binary)
+  patinfo_sex_binary<- deadonly_timeto %>% filter(!is.na(patinfo_sex_binary)) %>% group_by(patinfo_sex_binary) %>% summarise(N=n(), median=paste0(median(perstime,na.rm = T),", (" ,quantile(perstime,0.25), ",",quantile(perstime,0.75), ")")) %>% mutate(pval="") %>%
+    add_row(patinfo_sex_binary = "Sex", N=NA, median = NA, pval = as.character(round(as.numeric(kw.sex[3]), digits = 4))) %>% rename(Characteristic=patinfo_sex_binary)
+  patinfo_sex_binary<- patinfo_sex_binary[c(3,1:2),]
 
-  age_binary60<- deadonly_timeto %>% filter(!is.na(age_binary60)) %>% group_by(age_binary60) %>% summarise(N=n(), median=paste0(median(perstime),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.age[3]), digits = 4)) %>%
-    add_row(age_binary60 = "Age (<60, ≥60) ", median = NA, pval = NA) %>% rename(Characteristic=age_binary60)
+  age_binary60<- deadonly_timeto %>% filter(!is.na(age_binary60)) %>% group_by(age_binary60) %>% summarise(N=n(), median=paste0(median(perstime),", (" ,quantile(perstime,0.25), ",",quantile(perstime,0.75), ")")) %>% mutate(pval="") %>%
+    add_row(age_binary60 = "Age", N=NA,median = NA, pval = as.character(round(as.numeric(kw.age[3]), digits = 4))) %>% rename(Characteristic=age_binary60)
+  age_binary60<- age_binary60[c(3,1:2),]
 
-  hcw_binary<- deadonly_timeto %>% group_by(hcw_binary) %>% summarise(N=n(), median=paste0(median(perstime),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.hcw[3]), digits = 4))  %>%
-    add_row(hcw_binary = "Health care Worker", N=NA, median = NA, pval = NA) %>% rename(Characteristic=hcw_binary)
+  hcw_binary<- deadonly_timeto %>% group_by(hcw_binary) %>% summarise(N=n(), median=paste0(median(perstime),", (" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), ")")) %>% mutate(pval="")  %>%
+    add_row(hcw_binary = "Health care Worker", N=NA, median = NA, pval = as.character(round(as.numeric(kw.hcw[3]), digits = 4))) %>% rename(Characteristic=hcw_binary)
+  hcw_binary<- hcw_binary[c(3,1:2),]
 
-  capital_final_binary<- deadonly_timeto %>% group_by(capital_final_binary) %>% summarise(N=n(), median=paste0(median(perstime),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.captial[3]), digits = 4))  %>%
-    add_row(capital_final_binary = "Residence in apital city", N=NA, median = NA, pval = NA) %>% rename(Characteristic=capital_final_binary)
+  capital_final_binary<- deadonly_timeto %>% group_by(capital_final_binary) %>% summarise(N=n(), median=paste0(median(perstime),", (" ,quantile(perstime,0.25), ",",quantile(perstime,0.75), ")")) %>% mutate(pval="")  %>%
+    add_row(capital_final_binary = "Residence in capital city", N=NA, median = NA, pval = as.character(round(as.numeric(kw.captial[3]), digits = 4))) %>% rename(Characteristic=capital_final_binary)
+  capital_final_binary<- capital_final_binary[c(3,1:2),]
 
-  comcond_preexist1_alice_binary<- deadonly_timeto %>% group_by(comcond_preexist1_alice_binary) %>% summarise(N=n(),median=paste0(median(perstime),", [" ,quantile(perstime,0.25), ";",quantile(perstime,0.75), "]")) %>% mutate(pval=round(as.numeric(kw.comcond[3]), digits = 4)) %>%
-    add_row(comcond_preexist1_alice_binary = "Presence of comorbidity", N=NA, median = NA, pval = NA) %>% rename(Characteristic=comcond_preexist1_alice_binary)
+  comcond_preexist1_alice_binary<- deadonly_timeto %>% group_by(comcond_preexist1_alice_binary) %>% summarise(N=n(),median=paste0(median(perstime),", (" ,quantile(perstime,0.25), ",",quantile(perstime,0.75), ")")) %>% mutate(pval="") %>%
+    add_row(comcond_preexist1_alice_binary = "Presence of comorbidity", N=NA, median = NA, pval = as.character(round(as.numeric(kw.comcond[3]), digits = 4))) %>% rename(Characteristic=comcond_preexist1_alice_binary)
+  comcond_preexist1_alice_binary<- comcond_preexist1_alice_binary[c(3,1:2),]
 
-  deadonly_timeto_summary<-do.call("rbind",list(patinfo_sex_binary,age_binary60,hcw_binary,capital_final_binary,comcond_preexist1_alice_binary))
+  deadcount<-as.character(nrow(deadonly_timeto))
+  deadonly_timeto_summary<-do.call("rbind",list(patinfo_sex_binary,age_binary60,hcw_binary,capital_final_binary,comcond_preexist1_alice_binary)) %>% mutate(N = if_else(is.na(N), "", as.character(N)),median = if_else(is.na(median), "", as.character(median)), pval = if_else(is.na(pval), "", as.character(pval)))  %>% flextable() %>%
+    set_header_labels(values = c(Characterisitc="Characterisitc",N=paste("Dead, N=",deadcount), median="Time to death (days)", pval="p-value")) %>%  footnote(i = c(1), j = c(3,4), part="header",value = as_paragraph(c("Statistics presented: Median (IQR)", "Statistical test: Kruskal-Wallis rank sum test ")),ref_symbols = c("*","†")) %>%
+    italic(i = c(2,3,5,6,8,9,11,12,14,15), j = 1, italic = TRUE, part = "body") %>%
+    fontsize(size = 14, part = "header") %>% fontsize(size = 13, part = "body") %>% fontsize(size = 12, part = "footer")
 
-  #this needs formatting manually after to make look nicer as I made it the "long way round"
-  openxlsx::write.xlsx(deadonly_timeto_summary, "whoisddying_manuscript/deadonly_timetodeaddays_median.xlsx")
-
+  deadonly_timeto_summary%>% flextable::save_as_docx(path="whoisddying_manuscript/timetodeath_median.docx")
 
 
 
