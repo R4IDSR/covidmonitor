@@ -14,8 +14,9 @@ library("patchwork")
 
 
 ## import alice's count dataset
-counts <- rio::import("https://docs.google.com/spreadsheets/d/1P8Y18wxhntPVjt8bYstBcXfZIAgHfLei/edit#gid=1946857273") %>%
-  filter(country_iso != "sum")
+counts <- rio::import("https://docs.google.com/spreadsheets/d/1hAgFXKzxrCC4O_4nqNlrid1uZYHNQbwf/edit#gid=177225701") %>%
+  filter(country_iso != "sum") %>%
+  select(-x2020)
 
 ## read in UN population data
 population <- rio::import("https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/EXCEL_FILES/1_Population/WPP2019_POP_F01_1_TOTAL_POPULATION_BOTH_SEXES.xlsx")
@@ -222,4 +223,84 @@ ggsave(plot = full_map,
 
 
 
+################################################################################
+## comparing death counts with external databases
+library("COVID19")
 
+## download data (cleaned so NAs are replaced with zero)
+world_counts <- covid19(raw = FALSE)
+
+## get the sources of data for each
+world_counts_source <- covid19cite(world_counts)
+
+## only keep countries of interest for counts
+world_counts <- world_counts %>%
+  filter(id %in% counts$country_iso)
+
+## only keep countries of interest for sources
+world_counts_source <- world_counts_source %>%
+  filter(iso_alpha_3 %in% counts$country_iso)
+
+## find first non missing date with death counts
+# earliest_deaths <- world_counts %>%
+#   group_by(id) %>%
+#   filter(!is.na(deaths)) %>%
+#   summarise(first = first(date)) %>%
+#   summarise(first = min(first)) %>%
+#   pull() %>%
+#   as.Date()
+
+
+## filter based on that date
+# world_counts <- world_counts %>%
+#   filter(date >= earliest_deaths)
+
+## define our start and end dates
+start_date <- as.Date("2020-03-21")
+end_date   <- as.Date("2020-10-31")
+
+## filter for reports on the dates of interest (remember cumullative counts)
+world_counts <- world_counts %>%
+  filter(date %in% c(
+             start_date,
+             end_date))
+
+
+## create the amount at end_date by substracting amount at start_date
+indicator_counts <- world_counts %>%
+  group_by(id) %>%
+  summarise(confirmed = confirmed - lag(confirmed),
+            deaths    = deaths - lag(deaths),
+            population = population) %>%
+  ## drop start_date row
+  filter(!is.na(confirmed)) %>%
+  ## calculate inc and cfr
+  mutate(incidence = confirmed / population * 100000,
+         cfr = deaths / confirmed * 100)
+
+## label data from johns hopkins
+names(indicator_counts) <- paste0(names(indicator_counts), "_jhu")
+
+## combine with our counts data
+comparisson <- left_join(
+  select(
+    counts,
+    country_iso,
+    confirmed,
+    dead,
+    population = x2020,
+    incidence,
+    cfr = CFR
+  ),
+  indicator_counts,
+  by = c("country_iso" = "id_jhu")
+)
+
+## sort columns so can compare next to eachother
+comparisson <- comparisson %>%
+  select(country_iso,
+         contains("confirmed"),
+         contains("dea"),
+         contains("population"),
+         contains("incidence"),
+         contains("cfr"))
