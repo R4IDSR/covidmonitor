@@ -34,6 +34,7 @@ knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
 
 ## Installing required packages for this template
 required_packages <- c(
+                       "covidmonitor",   # for WHO AFRO data functions
                        "knitr",          # create output docs
                        "here",           # find your files
                        "rio",            # read in data
@@ -43,7 +44,8 @@ required_packages <- c(
                        "ggplot2",        # create plots
                        "countrycode",    # recode country ISOs to full names
                        "tidyr",          # clean/shape data
-                       "flextable"       # nicely formatted output tables
+                       "flextable",      # nicely formatted output tables
+                       "matchmaker"     # dictionary-based standardization of variables
                        )
   
 for (pkg in required_packages) {
@@ -89,10 +91,13 @@ Also define the country code of interest.
 ```{r define_current_week}
 
 ## current week
-this_week <- as.Date("2020-11-30")
+this_week <- as.Date("2020-12-25")
 
 ## week number of current week
 num_week <- yearweek(this_week)
+
+## three weeks ago (so can show progress over last month) 
+weeks_of_interest <- seq(num_week - 3, num_week, by = 1)
 
 ## country of interest iso code 
 country_iso <- "STP"
@@ -113,14 +118,22 @@ data_folder <- here::here("data", "raw")
 ## define path to folder with output 
 output_folder <- here::here("data", "clean")
 
-## read in the dataset of interest 
+## read in the dataset of interest in long format
 mne_data <- merge_kpi(data_folder, 
                       country_iso, 
                       output_folder, 
                       outputname = paste0("kpi_merged_", 
                                            country_iso, 
                                            "_",
-                                           this_week))
+                                           this_week), 
+                      wide = FALSE)
+
+## read in the m&e dictionary 
+mne_dict <- rio::import(
+    system.file("extdata", "mne_dictionary.xlsx",
+                package = "covidmonitor"),
+    which = 1
+  )
 
 ```
 
@@ -140,10 +153,39 @@ mne_data$epi_week <- yearweek(
     year(mne_data$date), " W", mne_data$epi_week)
   )
 
-## drop the weeks after week of interest
+## only keep week of interest (and 3 before)
 mne_data <- mne_data %>% 
-  filter(epi_week <= num_week)
+  filter(epi_week %in% weeks_of_interest) 
 
+## temporarily make epi_week a factor 
+mne_data <- mne_data %>% 
+  mutate(
+    epi_week = factor(as.character(epi_week), 
+                      levels = as.character(weeks_of_interest)))
+
+## add in missing weeks as NAs 
+mne_data <- mne_data %>% 
+  complete(epi_week, indicator)
+
+## make epi_week a yearweek again 
+mne_data <- mne_data %>% 
+  mutate(epi_week = yearweek(
+    as.character(
+      epi_week)))
+
+## add in the grouping variable from dictionary 
+mne_data <- mne_data %>%
+  mutate(grps = match_vec(indicator, 
+                            dictionary = mne_dict, 
+                            from = "var_name", 
+                            "grp_type"))
+
+## add in the english labels for variables 
+mne_data <- mne_data %>% 
+  mutate(labels = match_vec(indicator, 
+                            dictionary = mne_dict, 
+                            from = "var_name", 
+                            "english_label"))
 ```
  
  
@@ -168,4 +210,120 @@ tibble("Country"        = countrycode(country_iso, origin = "iso3c", destination
 ```
 
 
+
+Please note that this is an INTERNAL document. The AFRO office is requesting your 
+honest feedback to better understand the response capacity across the region.
+
+Additionally, the corresponding Excel tool describes the frequency of reporting 
+for each indicator. Data is entered into the “Data Fields” tab, and the indicators
+in the first tab are automatically calculated. 
+
+The indicators flagged as Weekly should be included in each submission. Indicators
+flagged as Bi-weekly should be included in the submissions the first and third 
+weeks of each month. Finally, indicators flagged as Monthly should be included 
+in the first report submitted for each month, providing data and details on for 
+the previous month.
+
+# Section I: Situation Overview 
+
+In this section, please provide a description of the current situation. 
+
+# Section II: Critical Analysis of the Response 
+
+In this section, please provide a critical analysis of ongoing response actions 
+by pillar. Please describe areas of progress, (indicators that are in the target 
+range or moving towards the target range), areas of weakness (indicators that are 
+outside the target ranges), and explanations for the demonstrated progress or weakness. 
+Additionally, please discuss the overall capacity within each response pillar to 
+manage and mitigate the pandemic.
+
+## Coordination & incidence management (Indicators 1-5)
+  
+- Areas of progress  
+- Areas of weaknesses   
+- Others (see instructions)  
+
+Table: Performance indicators for coordination and incidence management over 
+the past four weeks
+```{r coordination_incidenct_management}
+
+## create table for indicators of interest
+mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Coordination & Incident Management" & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels) %>% 
+  ## spread in to wide format
+  pivot_wider(names_from = epi_week, 
+              values_from = num_vars) %>% 
+  flextable()
+```
+
+## Control at points of entry (Indicators 6-8) 
+  
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
+
+```{r control_poe}
+
+## create table for indicators of interest
+mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Control at point of entries"  & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels) %>% 
+    ## spread in to wide format
+  pivot_wider(names_from = epi_week, 
+              values_from = num_vars) %>% 
+  flextable()
+```
+
+
+## Surveillance & control of transmission (Indicators 9-11) 
+
+```{r surveillance}
+
+## create table for indicators of interest
+mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Surveillance & control of transmission" & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels) %>% 
+    ## spread in to wide format
+  pivot_wider(names_from = epi_week, 
+              values_from = num_vars) %>% 
+  flextable()
+```
+
+## Laboratory capacity (Indicators 12-14)
+
+```{r lab_capacity}
+
+## create table for indicators of interest
+mne_data %>% 
+  ## only keep indicators interested in
+  filter(
+    grepl(
+      paste0("indicator_", 12:14, collapse = "|"),
+           indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels) %>% 
+    ## spread in to wide format
+  pivot_wider(names_from = epi_week, 
+              values_from = num_vars) %>% 
+  flextable()
+
+```
+
+## Case management & IPC
+
+```{r case_management}
+
+
+
+```
 
