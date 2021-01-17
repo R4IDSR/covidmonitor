@@ -1,5 +1,5 @@
 ---
-title: "Monitoring and Evaluation the COVID-19 Pandemic in the African region"
+title: "Monitoring and Evaluation for the COVID-19 Pandemic in the African region"
 author: "Planning and Health Information Pillar"
 date: "`r format(Sys.time(), '%A %d %B %Y')`"
 output:
@@ -186,6 +186,10 @@ mne_data <- mne_data %>%
                             dictionary = mne_dict, 
                             from = "var_name", 
                             "english_label"))
+
+## round numerics to 1 digit 
+mne_data <- mne_data %>% 
+  mutate(num_vars = round(num_vars, digits = 1))
 ```
  
  
@@ -284,6 +288,10 @@ mne_data %>%
 
 ## Surveillance & control of transmission (Indicators 9-11) 
 
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
+
 ```{r surveillance}
 
 ## create table for indicators of interest
@@ -300,6 +308,10 @@ mne_data %>%
 ```
 
 ## Laboratory capacity (Indicators 12-14)
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
 
 ```{r lab_capacity}
 
@@ -319,11 +331,118 @@ mne_data %>%
 
 ```
 
-## Case management & IPC
+## Case management & IPC (Indicators 15-25)
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
+
 
 ```{r case_management}
 
-
+## create table for indicators of interest
+mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Case Management and IPC"  & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels) %>% 
+    ## spread in to wide format
+  pivot_wider(names_from = epi_week, 
+              values_from = num_vars) %>% 
+  flextable()
 
 ```
 
+## Risk communication and community engagement (Indicator 26)
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
+  - Social distancing, mask use and handwashing compliance
+
+```{r risk_communication}
+
+## create table for indicators of interest
+mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Risk communication and community engagement"   & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels) %>% 
+    ## spread in to wide format
+  pivot_wider(names_from = epi_week, 
+              values_from = num_vars) %>% 
+  flextable()
+
+```
+
+## Safe essential service delivery (Indicators 27-30)
+
+Please note that these are a subset of indicators used to assess safe delivery 
+of essential services. The complete list of indicators for this area can be 
+found [here](https://rebrand.ly/servicecontinuity). If you have noticed changes 
+in any of the areas not captured by the indicators listed in the Excel tool,
+please describe them here.
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)
+
+
+```{r service_delivery}
+
+## create table for indicators of interest
+mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Safe essential service delivery"     & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels) %>% 
+    ## spread in to wide format
+  pivot_wider(names_from = epi_week, 
+              values_from = num_vars) %>% 
+  flextable()
+
+```
+
+## Procurement of critical supplies (Indicator 31) 
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)
+
+```{r procurement}
+
+## create table for indicators of interest
+mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Procurement of Critical Supplies"  & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels) %>% 
+    ## spread in to wide format
+  pivot_wider(names_from = epi_week, 
+              values_from = num_vars) %>% 
+  flextable()
+```
+
+Additionally, please discuss how the specific response efforts are guided by the 
+epidemiologic information collected through the disease surveillance system.
+
+## Section III: Areas of concern 
+
+In this section, please discuss and elaborate on any areas of concern. For example, 
+please consider discussing the social, cultural, economic and political implications 
+and impacts of the outbreak and how this affects the public health response. 
+
+## Section IV: Best practices 
+
+In this section, please discuss any best practices that have been noted in any of 
+the response pillars or in response coordination.
+
+## Section V: Situation interpretation and next steps 
+
+Please provide your honest, professional perspective on the response efforts and 
+partnerships. Additionally, please describe the immediate priorities and proposed 
+next steps for the response efforts.
