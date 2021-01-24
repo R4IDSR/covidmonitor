@@ -1,0 +1,627 @@
+---
+title: "Monitoring and Evaluation for the COVID-19 Pandemic in the African region"
+author: "Planning and Health Information Pillar"
+date: "`r format(Sys.time(), '%A %d %B %Y')`"
+output:
+  word_document: default
+---
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// setup \\\
+--------------------------------------------------------------------------------
+Several packages are required for different aspects of  analysis with *R*. 
+You will need to install these before starting. 
+These packages can be quite large and may take a while to download in the
+field. If you have access to a USB key with these packages, it makes sense to
+copy and paste the packages into your computer's R package library 
+(run the command .libPaths() to see the folder path). 
+For help installing packages, please visit https://r4epis.netlify.com/welcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r setup, include=FALSE, cache=F}
+
+# set options for rmarkdown 
+knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
+                      message = FALSE, # hide all messages in output
+                      warning = FALSE, # hide all warnings in output
+                      collapse = TRUE, # combine all source/output to single block
+                      fig.width = 20,  # define figure width
+                      fig.height = 8,  # define figure height
+                      dpi = 300,       # define figure definitions
+                      cache = F)       # run all code chunks (even if repeated)
+
+
+## Installing required packages for this template
+required_packages <- c(
+                       "covidmonitor",   # for WHO AFRO data functions
+                       "knitr",          # create output docs
+                       "here",           # find your files
+                       "rio",            # read in data
+                       "lubridate",      # work with dates
+                       "tsibble",        # for working with dates as time series
+                       "dplyr",          # clean/shape data
+                       "ggplot2",        # create plots
+                       "countrycode",    # recode country ISOs to full names
+                       "tidyr",          # clean/shape data
+                       "flextable",      # nicely formatted output tables
+                       "matchmaker",     # dictionary-based standardization of variables
+                       "forcats"         # handle factors
+                       )
+  
+for (pkg in required_packages) {
+  # install packages if not already present
+  if (!pkg %in% rownames(installed.packages())) {
+    install.packages(pkg)
+  }
+  # load packages to this current session 
+  library(pkg, character.only = TRUE)
+}
+
+
+
+## define a theme for ggplot (so all look similar) 
+epi_theme <- theme_classic() + 
+    theme(
+      text = element_text(size = 45), 
+      ## rotate x axis labels
+      axis.text.x  = element_text(angle = 45, vjust = 0.5),
+      axis.title   = element_text(color = "black", face = "bold"), 
+      legend.title = element_blank(), 
+      legend.text  = element_text(color = "black"), 
+      legend.position  = "bottom",
+      legend.direction = "horizontal",
+      ## colour and size the grid lines in the plot 
+      # panel.grid.minor = element_line(colour = "grey90", size = 0.5), 
+      panel.grid.major = element_line(colour = "grey90"), 
+      ## remove axis lines 
+      axis.line = element_blank()
+      )
+```
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// define_current_week \\\
+--------------------------------------------------------------------------------
+ 
+This section is used to define your week of interest. It will be used later
+to filter your outputs. 
+You can also set the day which your epiweek starts on - the default for this
+is Monday. 
+Also define the country code of interest. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r define_current_week}
+
+## current week
+this_week <- as.Date("2020-12-25")
+
+## week number of current week
+num_week <- yearweek(this_week)
+
+## three weeks ago (so can show progress over last month) 
+weeks_of_interest <- seq(num_week - 3, num_week, by = 1)
+
+## country of interest iso code 
+country_iso <- "STP"
+```
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// import_data \\\
+--------------------------------------------------------------------------------
+This chunk reads in all the data necessary as well as dictionaries. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r import_data}
+
+
+## define path to folder with raw data 
+data_folder <- here::here("data", "raw")
+
+## define path to folder with output 
+output_folder <- here::here("data", "clean")
+
+## read in the dataset of interest in long format
+mne_data <- merge_kpi(data_folder, 
+                      country_iso, 
+                      output_folder, 
+                      outputname = paste0("kpi_merged_", 
+                                           country_iso, 
+                                           "_",
+                                           this_week), 
+                      wide = FALSE)
+
+## read in the m&e dictionary 
+mne_dict <- rio::import(
+    system.file("extdata", "mne_dictionary.xlsx",
+                package = "covidmonitor"),
+    which = 1
+  )
+
+```
+
+
+
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// clean_data \\\
+--------------------------------------------------------------------------------
+This chunk does basic data cleaning and filtering
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r clean_data}
+
+## fix the epi week variable 
+mne_data$epi_week <- yearweek(
+  paste0(
+    year(mne_data$date), " W", mne_data$epi_week)
+  )
+
+## only keep week of interest (and 3 before)
+mne_data <- mne_data %>% 
+  filter(epi_week %in% weeks_of_interest) 
+
+## temporarily make epi_week a factor 
+mne_data <- mne_data %>% 
+  mutate(
+    epi_week = factor(as.character(epi_week), 
+                      levels = as.character(weeks_of_interest)))
+
+## add in missing weeks as NAs 
+mne_data <- mne_data %>% 
+  complete(epi_week, indicator)
+
+## make epi_week a yearweek again 
+mne_data <- mne_data %>% 
+  mutate(epi_week = yearweek(
+    as.character(
+      epi_week)))
+
+## add in the grouping variable from dictionary 
+mne_data <- mne_data %>%
+  mutate(grps = match_vec(indicator, 
+                            dictionary = mne_dict, 
+                            from = "var_name", 
+                            "grp_type"))
+
+## add in the english labels for variables 
+mne_data <- mne_data %>% 
+  mutate(labels = match_vec(indicator, 
+                            dictionary = mne_dict, 
+                            from = "var_name", 
+                            "english_label")) 
+
+## remove the word "performance" from the labels column (otherwise very long)
+mne_data <- mne_data %>% 
+  mutate(labels = gsub("Performance", "", labels))
+
+
+## round numerics to 1 digit 
+mne_data <- mne_data %>% 
+  mutate(num_vars = round(num_vars, digits = 1))
+
+
+## make evaluation a factor so all levels represented
+mne_data <- mne_data %>% 
+  mutate(evaluation = factor(evaluation, 
+                        levels = c("Poor",  "Acceptable",  "Good")), 
+         ## make NAs in to missing 
+         evaluation = fct_explicit_na(evaluation, na_level = "Missing")
+         )
+
+```
+ 
+ 
+<!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/// report_id \\\
+--------------------------------------------------------------------------------
+This chunk creates a table with the identifiers for this report, country, date 
+of report and epiweek. 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+
+```{r report_id}
+
+## define datframe 
+tibble("Country"   = countrycode(country_iso, origin = "iso3c", destination = "country.name"), 
+  "Date of report" = format(this_week, format = "%d %B %Y"), 
+  "Epiweek"        =  num_week) %>% 
+  mutate(across(.fns = as.character)) %>% 
+  pivot_longer(everything(), 
+                      names_to = "variable", 
+                      values_to = "values") %>% 
+  ## show as a flextable with appropriate column width
+  flextable() %>% 
+  autofit()
+```
+
+
+
+Please note that this is an INTERNAL document. The AFRO office is requesting your 
+honest feedback to better understand the response capacity across the region.
+
+Additionally, the corresponding Excel tool describes the frequency of reporting 
+for each indicator. Data is entered into the “Data Fields” tab, and the indicators
+in the first tab are automatically calculated. 
+
+The indicators flagged as Weekly should be included in each submission. Indicators
+flagged as Bi-weekly should be included in the submissions the first and third 
+weeks of each month. Finally, indicators flagged as Monthly should be included 
+in the first report submitted for each month, providing data and details on for 
+the previous month.
+
+# Section I: Situation Overview 
+
+In this section, please provide a description of the current situation. 
+
+# Section II: Critical Analysis of the Response 
+
+In this section, please provide a critical analysis of ongoing response actions 
+by pillar. Please describe areas of progress, (indicators that are in the target 
+range or moving towards the target range), areas of weakness (indicators that are 
+outside the target ranges), and explanations for the demonstrated progress or weakness. 
+Additionally, please discuss the overall capacity within each response pillar to 
+manage and mitigate the pandemic.
+
+## Coordination & incidence management (Indicators 1-5)
+  
+- Areas of progress  
+- Areas of weaknesses   
+- Others (see instructions)  
+  
+  
+```{r coordination_incidenct_management}
+
+## create table for indicators of interest
+mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Coordination & Incident Management" & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels) %>% 
+  ## spread in to wide format
+  pivot_wider(names_from = epi_week, 
+              values_from = num_vars) %>% 
+  ## show as a flextable with appropriate column width
+  flextable() %>% 
+  width(j = ~labels, width = 2.5)
+```
+
+## Control at points of entry (Indicators 6-8) 
+  
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
+
+```{r control_poe}
+
+## create table for indicators of interest
+indicator_counts <- mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Control at point of entries"  & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels, evaluation)
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) + 
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) + 
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>% 
+#   ## drop evaluation column 
+#   select(-evaluation) %>% 
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
+```
+
+
+## Surveillance & control of transmission (Indicators 9-11) 
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
+
+```{r surveillance}
+
+## create table for indicators of interest
+indicator_counts <- mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Surveillance & control of transmission" & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels, evaluation)
+
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = sub("\\:.*", "", x = labels),
+           fill = evaluation)) +  
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) + 
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>% 
+#   ## drop evaluation column 
+#   select(-evaluation) %>% 
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
+```
+
+## Laboratory capacity (Indicators 12-14)
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
+
+```{r lab_capacity}
+
+## create table for indicators of interest
+indicator_counts <- mne_data %>% 
+  ## only keep indicators interested in
+  filter(
+    grepl(
+      paste0("indicator_", 12:14, collapse = "|"),
+           indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels, evaluation) 
+ 
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) +  
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) + 
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week,
+#               values_from = num_vars) %>%
+#   flextable()
+
+```
+
+## Case management & IPC (Indicators 15-25)
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
+
+
+```{r case_management}
+
+## create table for indicators of interest
+indicator_counts <- mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Case Management and IPC"  & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels, evaluation)
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) + 
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) +
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
+
+```
+
+## Risk communication and community engagement (Indicator 26)
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)  
+  - Social distancing, mask use and handwashing compliance
+
+```{r risk_communication}
+
+## create table for indicators of interest
+indicator_counts <- mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Risk communication and community engagement"   & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels, evaluation)
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) + 
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) +
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
+```
+
+## Safe essential service delivery (Indicators 27-30)
+
+Please note that these are a subset of indicators used to assess safe delivery 
+of essential services. The complete list of indicators for this area can be 
+found [here](https://rebrand.ly/servicecontinuity). If you have noticed changes 
+in any of the areas not captured by the indicators listed in the Excel tool,
+please describe them here.
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)
+
+
+```{r service_delivery}
+
+## create table for indicators of interest
+indicator_counts <- mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Safe essential service delivery"     & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels, evaluation)
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) +  
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) +
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
+```
+
+## Procurement of critical supplies (Indicator 31) 
+
+- Drivers of progress  
+- Drivers of weaknesses   
+- Others (see instructions)
+
+```{r procurement}
+
+## create table for indicators of interest
+indicator_counts <- mne_data %>% 
+  ## only keep indicators interested in
+  filter(grps == "Procurement of Critical Supplies"  & 
+           grepl("indicator_", indicator)) %>% 
+  ## choose variables want 
+  select(epi_week, num_vars, labels, evaluation)
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) + 
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) +
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
+```
+
+Additionally, please discuss how the specific response efforts are guided by the 
+epidemiologic information collected through the disease surveillance system.
+
+## Section III: Areas of concern 
+
+In this section, please discuss and elaborate on any areas of concern. For example, 
+please consider discussing the social, cultural, economic and political implications 
+and impacts of the outbreak and how this affects the public health response. 
+
+## Section IV: Best practices 
+
+In this section, please discuss any best practices that have been noted in any of 
+the response pillars or in response coordination.
+
+## Section V: Situation interpretation and next steps 
+
+Please provide your honest, professional perspective on the response efforts and 
+partnerships. Additionally, please describe the immediate priorities and proposed 
+next steps for the response efforts.
