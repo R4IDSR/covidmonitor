@@ -3,7 +3,6 @@ title: "Monitoring and Evaluation for the COVID-19 Pandemic in the African regio
 author: "Planning and Health Information Pillar"
 date: "`r format(Sys.time(), '%A %d %B %Y')`"
 output:
-  html_document: default
   word_document: default
 ---
 
@@ -45,7 +44,8 @@ required_packages <- c(
                        "countrycode",    # recode country ISOs to full names
                        "tidyr",          # clean/shape data
                        "flextable",      # nicely formatted output tables
-                       "matchmaker"     # dictionary-based standardization of variables
+                       "matchmaker",     # dictionary-based standardization of variables
+                       "forcats"         # handle factors
                        )
   
 for (pkg in required_packages) {
@@ -62,7 +62,7 @@ for (pkg in required_packages) {
 ## define a theme for ggplot (so all look similar) 
 epi_theme <- theme_classic() + 
     theme(
-      text = element_text(size = 18, family = "Arial"), 
+      text = element_text(size = 45), 
       ## rotate x axis labels
       axis.text.x  = element_text(angle = 45, vjust = 0.5),
       axis.title   = element_text(color = "black", face = "bold"), 
@@ -72,7 +72,9 @@ epi_theme <- theme_classic() +
       legend.direction = "horizontal",
       ## colour and size the grid lines in the plot 
       # panel.grid.minor = element_line(colour = "grey90", size = 0.5), 
-      panel.grid.major = element_line(colour = "grey90")
+      panel.grid.major = element_line(colour = "grey90"), 
+      ## remove axis lines 
+      axis.line = element_blank()
       )
 ```
 
@@ -111,6 +113,7 @@ This chunk reads in all the data necessary as well as dictionaries.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
 
 ```{r import_data}
+
 
 ## define path to folder with raw data 
 data_folder <- here::here("data", "raw")
@@ -185,11 +188,26 @@ mne_data <- mne_data %>%
   mutate(labels = match_vec(indicator, 
                             dictionary = mne_dict, 
                             from = "var_name", 
-                            "english_label"))
+                            "english_label")) 
+
+## remove the word "performance" from the labels column (otherwise very long)
+mne_data <- mne_data %>% 
+  mutate(labels = gsub("Performance", "", labels))
+
 
 ## round numerics to 1 digit 
 mne_data <- mne_data %>% 
   mutate(num_vars = round(num_vars, digits = 1))
+
+
+## make evaluation a factor so all levels represented
+mne_data <- mne_data %>% 
+  mutate(evaluation = factor(evaluation, 
+                        levels = c("Poor",  "Acceptable",  "Good")), 
+         ## make NAs in to missing 
+         evaluation = fct_explicit_na(evaluation, na_level = "Missing")
+         )
+
 ```
  
  
@@ -203,14 +221,16 @@ of report and epiweek.
 ```{r report_id}
 
 ## define datframe 
-tibble("Country"        = countrycode(country_iso, origin = "iso3c", destination = "country.name"), 
+tibble("Country"   = countrycode(country_iso, origin = "iso3c", destination = "country.name"), 
   "Date of report" = format(this_week, format = "%d %B %Y"), 
   "Epiweek"        =  num_week) %>% 
   mutate(across(.fns = as.character)) %>% 
   pivot_longer(everything(), 
                       names_to = "variable", 
                       values_to = "values") %>% 
-  flextable()
+  ## show as a flextable with appropriate column width
+  flextable() %>% 
+  autofit()
 ```
 
 
@@ -246,9 +266,8 @@ manage and mitigate the pandemic.
 - Areas of progress  
 - Areas of weaknesses   
 - Others (see instructions)  
-
-Table: Performance indicators for coordination and incidence management over 
-the past four weeks
+  
+  
 ```{r coordination_incidenct_management}
 
 ## create table for indicators of interest
@@ -261,7 +280,9 @@ mne_data %>%
   ## spread in to wide format
   pivot_wider(names_from = epi_week, 
               values_from = num_vars) %>% 
-  flextable()
+  ## show as a flextable with appropriate column width
+  flextable() %>% 
+  width(j = ~labels, width = 2.5)
 ```
 
 ## Control at points of entry (Indicators 6-8) 
@@ -273,16 +294,39 @@ mne_data %>%
 ```{r control_poe}
 
 ## create table for indicators of interest
-mne_data %>% 
+indicator_counts <- mne_data %>% 
   ## only keep indicators interested in
   filter(grps == "Control at point of entries"  & 
            grepl("indicator_", indicator)) %>% 
   ## choose variables want 
-  select(epi_week, num_vars, labels) %>% 
-    ## spread in to wide format
-  pivot_wider(names_from = epi_week, 
-              values_from = num_vars) %>% 
-  flextable()
+  select(epi_week, num_vars, labels, evaluation)
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) + 
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) + 
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>% 
+#   ## drop evaluation column 
+#   select(-evaluation) %>% 
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
 ```
 
 
@@ -295,16 +339,38 @@ mne_data %>%
 ```{r surveillance}
 
 ## create table for indicators of interest
-mne_data %>% 
+indicator_counts <- mne_data %>% 
   ## only keep indicators interested in
   filter(grps == "Surveillance & control of transmission" & 
            grepl("indicator_", indicator)) %>% 
   ## choose variables want 
-  select(epi_week, num_vars, labels) %>% 
-    ## spread in to wide format
-  pivot_wider(names_from = epi_week, 
-              values_from = num_vars) %>% 
-  flextable()
+  select(epi_week, num_vars, labels, evaluation)
+
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = sub("\\:.*", "", x = labels),
+           fill = evaluation)) +  
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) + 
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>% 
+#   ## drop evaluation column 
+#   select(-evaluation) %>% 
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
 ```
 
 ## Laboratory capacity (Indicators 12-14)
@@ -316,18 +382,41 @@ mne_data %>%
 ```{r lab_capacity}
 
 ## create table for indicators of interest
-mne_data %>% 
+indicator_counts <- mne_data %>% 
   ## only keep indicators interested in
   filter(
     grepl(
       paste0("indicator_", 12:14, collapse = "|"),
            indicator)) %>% 
   ## choose variables want 
-  select(epi_week, num_vars, labels) %>% 
-    ## spread in to wide format
-  pivot_wider(names_from = epi_week, 
-              values_from = num_vars) %>% 
-  flextable()
+  select(epi_week, num_vars, labels, evaluation) 
+ 
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) +  
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) + 
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week,
+#               values_from = num_vars) %>%
+#   flextable()
 
 ```
 
@@ -341,16 +430,39 @@ mne_data %>%
 ```{r case_management}
 
 ## create table for indicators of interest
-mne_data %>% 
+indicator_counts <- mne_data %>% 
   ## only keep indicators interested in
   filter(grps == "Case Management and IPC"  & 
            grepl("indicator_", indicator)) %>% 
   ## choose variables want 
-  select(epi_week, num_vars, labels) %>% 
-    ## spread in to wide format
-  pivot_wider(names_from = epi_week, 
-              values_from = num_vars) %>% 
-  flextable()
+  select(epi_week, num_vars, labels, evaluation)
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) + 
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) +
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
 
 ```
 
@@ -364,17 +476,39 @@ mne_data %>%
 ```{r risk_communication}
 
 ## create table for indicators of interest
-mne_data %>% 
+indicator_counts <- mne_data %>% 
   ## only keep indicators interested in
   filter(grps == "Risk communication and community engagement"   & 
            grepl("indicator_", indicator)) %>% 
   ## choose variables want 
-  select(epi_week, num_vars, labels) %>% 
-    ## spread in to wide format
-  pivot_wider(names_from = epi_week, 
-              values_from = num_vars) %>% 
-  flextable()
+  select(epi_week, num_vars, labels, evaluation)
 
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) + 
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) +
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
 ```
 
 ## Safe essential service delivery (Indicators 27-30)
@@ -393,17 +527,39 @@ please describe them here.
 ```{r service_delivery}
 
 ## create table for indicators of interest
-mne_data %>% 
+indicator_counts <- mne_data %>% 
   ## only keep indicators interested in
   filter(grps == "Safe essential service delivery"     & 
            grepl("indicator_", indicator)) %>% 
   ## choose variables want 
-  select(epi_week, num_vars, labels) %>% 
-    ## spread in to wide format
-  pivot_wider(names_from = epi_week, 
-              values_from = num_vars) %>% 
-  flextable()
+  select(epi_week, num_vars, labels, evaluation)
 
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) +  
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) +
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
 ```
 
 ## Procurement of critical supplies (Indicator 31) 
@@ -415,16 +571,39 @@ mne_data %>%
 ```{r procurement}
 
 ## create table for indicators of interest
-mne_data %>% 
+indicator_counts <- mne_data %>% 
   ## only keep indicators interested in
   filter(grps == "Procurement of Critical Supplies"  & 
            grepl("indicator_", indicator)) %>% 
   ## choose variables want 
-  select(epi_week, num_vars, labels) %>% 
-    ## spread in to wide format
-  pivot_wider(names_from = epi_week, 
-              values_from = num_vars) %>% 
-  flextable()
+  select(epi_week, num_vars, labels, evaluation)
+
+## plot data as tiles coloured by evaluation 
+ggplot(indicator_counts, 
+       aes(x = epi_week, 
+           y = reorder(
+             sub("\\:.*", "", x = labels),
+             desc(labels)),
+           fill = evaluation)) + 
+  geom_tile(colour = "black") + 
+  geom_text(aes(label = num_vars), size = 11) +
+  scale_fill_manual(values = c(
+    "Good" = "#91CF60",
+    "Acceptable" = "#FFFFBF", 
+    "Poor" =  "#FC8D59", 
+    "Missing" = "Grey90"
+  )) + 
+  labs(y = "", x = "Calendar week") + 
+  epi_theme
+
+## to show as a table rather than a plot(uncomment below)
+# indicator_counts %>%
+#   ## drop evaluation column
+#   select(-evaluation) %>%
+#   ## spread in to wide format
+#   pivot_wider(names_from = epi_week, 
+#               values_from = num_vars) %>% 
+#   flextable()
 ```
 
 Additionally, please discuss how the specific response efforts are guided by the 
