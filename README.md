@@ -62,6 +62,10 @@ defaults)
 
 TODO: add details about how to use templates
 
+### Other
+
+TODO: add a note on the TCD 1904 date origin issue
+
 ## Monitoring & Evaluation
 
 ### Folder structure
