@@ -30,6 +30,24 @@ clean_linelist <- function(inputdirectory,
                            outputdirectory = tempdir(),
                            outputname = "Merged_linelist_", isotomerge = "AFRO") {
 
+  #import cleaning dictionary
+  clean_dict<-rio::import(#system.file(
+    here::here("inst", "Cleaning_dict_alice.xlsx"),
+    #package = "covidmonitor"),
+    readxl = FALSE)
+
+  #capital city
+  capital_dict<-rio::import(#system.file(
+    here::here("inst", "Cleaning_dict_alice.xlsx"),
+    #package = "covidmonitor"),
+    which=2,readxl = FALSE)
+
+  #somelinelists are only of confimred cases so are missing the outcome variable but this should be made confirmed and lab result positive for these countries
+  confirmed_dict<-rio::import(#system.file(
+    here::here("inst", "Cleaning_dict_alice.xlsx"),
+    #package = "covidmonitor"),
+    which=3,readxl = FALSE)
+
   # import has for some reason lost the values in some columns (ageonsetdays), due to the read_excel that is used.
   # as the output from the merge file is a .xlsx we can specify readxl =FALSE so the read.xlsx function will be used on the import instead
   # the read.xlsx functions requires the dependancy openxlsx
@@ -100,7 +118,7 @@ clean_linelist <- function(inputdirectory,
 
 
   # Create a symptomatic column those missing variable using other symptoms variables
-  symptoms <- dplyr::select(big_data_clean, c(id, contains("sympt"), -contains(c("pat_symptomatic", "pat_asymptomatic"))))
+  symptoms <- dplyr::select(big_data_clean, c(id, contains("sympt"), -contains(c("pat_symptomatic"))))
 
   #symptom variables
   symptvars <- names(symptoms)
@@ -121,6 +139,7 @@ clean_linelist <- function(inputdirectory,
   # blank cells to NA
   symptoms[symptoms == " "] <- NA
   symptoms[symptoms == ""] <- NA
+  symptoms[symptoms == "Not Available"] <- NA #wasnt caputured in merge fn but have added in as a variation for missing
 
   # determine if patient had symptoms
   # sum row if contains no or is missing (if all rows are no of missing =7)
@@ -141,13 +160,13 @@ clean_linelist <- function(inputdirectory,
   symptoms_clean <- dplyr::select(symptoms, c(id,pat_symptomatic))
   # merge with big data to infill symptomatic yes or no, only if missing this variable
   big_data_clean <- merge(big_data_clean, symptoms_clean, by = "id")
-  big_data_clean$pat_symptomatic.x <- ifelse(is.na(big_data_clean$pat_symptomatic.x), big_data_clean$pat_symptomatic.y, big_data_clean$pat_symptomatic.x)
+  big_data_clean$pat_symptomatic.x <- ifelse(is.na(big_data_clean$pat_symptomatic.x), big_data_clean$pat_symptomatic.y, big_data_clean$pat_symptomatic.x) #.x was the original variable
 
 
   # final clean up of pat_symptomatic
   big_data_clean$pat_symptomatic <- big_data_clean$pat_symptomatic.x
-  big_data_clean$pat_asymptomatic <- ifelse(big_data_clean$pat_asymptomatic == 1, 0, big_data_clean$pat_asymptomatic)
-  big_data_clean$pat_symptomatic <- ifelse(is.na(big_data_clean$pat_symptomatic) & !is.na(big_data_clean$pat_asymptomatic) & big_data_clean$pat_asymptomatic == 0, "no", big_data_clean$pat_symptomatic)
+  #big_data_clean$pat_asymptomatic <- ifelse(big_data_clean$pat_asymptomatic == 1, 0, big_data_clean$pat_asymptomatic)
+  big_data_clean$pat_symptomatic <- ifelse(is.na(big_data_clean$pat_symptomatic) & !is.na(big_data_clean$pat_asymptomatic) & big_data_clean$pat_asymptomatic == 1, "no", big_data_clean$pat_symptomatic)
 
   big_data_clean$pat_symptomatic.x <- NULL
   big_data_clean$pat_symptomatic.y <- NULL
@@ -156,18 +175,16 @@ clean_linelist <- function(inputdirectory,
   # debug to check
   sympt_test<- big_data_clean %>% select(id,contains("sympt"))
 
-  # remove now unneccessary symptoms variables but leave symptomatic variable
+  # remove now unneccessary symptoms variables but leave symptomatic variable (included removing the asymptomatic variable)
   big_data_clean <- big_data_clean[, -which(names(big_data_clean) %in% symptvars)]
 
 
-  # patinfo_occus
-  # list of words/ strings associated with healthcare
-  occupation <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 1) %>%
-    select(patinfo_occus) %>%
-    na.omit()
-  not_occupation <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 1) %>%
-    select(not_occupation) %>%
-    na.omit()
+  ## patinfo_occus ##
+  # list of words/ strings associated with healthcare/ non occupations that should be cleaned up
+  occupation <- na.omit(select(clean_dict,patinfo_occus))
+  not_occupation<-na.omit(select(clean_dict,not_occupation))
+
+
   # ensuring cleaning of "non occupations"
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "['?]|[[:punct:]]", replacement = "", ignore.case = T, perl = T))
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "[0-9]", replacement = "", ignore.case = T, perl = T))
@@ -178,6 +195,7 @@ clean_linelist <- function(inputdirectory,
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "\\s+$", replacement = "", ignore.case = T))
   big_data_clean$patinfo_occus <- ifelse(big_data_clean$patinfo_occus == "", NA, big_data_clean$patinfo_occus)
   big_data_clean$patinfo_occus <- ifelse(grepl(paste0("(?i)^", not_occupation$not_occupation, "$", collapse = "|"), big_data_clean$patinfo_occus, ignore.case = T), NA, big_data_clean$patinfo_occus)
+
   # Create a column that creates TRUE for health care worker after a match or partial match with list
   big_data_clean$hcw <- grepl(paste(occupation$patinfo_occus, collapse = "|"), big_data_clean$patinfo_occus, ignore.case = T)
   # replce if occupation was missing
