@@ -24,17 +24,19 @@ library(dplyr) # still have this here because across not supported in standard d
 inputdirectory <- "Merged_linelist_2021-01-17.xlsx"
 # outputdirectory <- "inst/"
 # outputname <- "Merged_linelist_"
-# isotomerge <- "AFRO"
+
 
 clean_linelist <- function(inputdirectory,
                            outputdirectory = tempdir(),
-                           outputname = "Merged_linelist_", isotomerge = "AFRO") {
+                           outputname = "Cleaned_linelist_") {
 
   #import cleaning dictionary
   clean_dict<-rio::import(#system.file(
     here::here("inst", "Cleaning_dict_alice.xlsx"),
     #package = "covidmonitor"),
     readxl = FALSE)
+  no<-na.omit(dplyr::select(clean_dict,no))
+  yes<-na.omit(dplyr::select(clean_dict,yes))
 
   #capital city
   capital_dict<-rio::import(#system.file(
@@ -95,8 +97,9 @@ clean_linelist <- function(inputdirectory,
 
 
   ## patinfo_sex##
-    # keep first letter of sex (always M or F)
-  big_data_clean <- big_data_clean %>% mutate_at("patinfo_sex", .funs = gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T)
+  #regex clean
+  big_data_clean <-dplyr::mutate(big_data_clean, across(c(patinfo_sex), gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T))
+  #keep first letter (in french/eng/pt it will always be M or F)
   big_data_clean$patinfo_sex <- substr(big_data_clean$patinfo_sex, 1, 1)
     # capitalise
   big_data_clean$patinfo_sex <- toupper(big_data_clean$patinfo_sex)
@@ -110,16 +113,18 @@ clean_linelist <- function(inputdirectory,
   # next steps requrie dataframe format
   big_data_clean <- data.frame(big_data_clean)
   # ensure original pat_symptomatic variable contains no numbers of special characters and only yes or no
-  big_data_clean <- big_data_clean %>%
-    mutate_at("pat_symptomatic", .funs = gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T) %>%
-    mutate_at("pat_symptomatic", .funs = gsub, pattern = "(?i)^no$|(?i)^non$|(?i)^n$", replacement = "no", ignore.case = T, perl = T) %>%
-    mutate_at("pat_symptomatic", .funs = gsub, pattern = "(?i)^yes$|(?i)^oui$|(?i)^sim$|(?i)^y$", replacement = "yes", ignore.case = T, perl = T)
+  big_data_clean <-dplyr::mutate(big_data_clean, across(c(pat_symptomatic), gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T))
+  big_data_clean <-dplyr::mutate(big_data_clean, across(c(pat_symptomatic), gsub, pattern = paste0("(?i)^", no$no, "$", collapse = "|"), replacement = "no", ignore.case = T, perl = T))
+  big_data_clean <-dplyr::mutate(big_data_clean, across(c(pat_symptomatic), gsub, pattern = paste0("(?i)^", yes$yes, "$", collapse = "|"), replacement = "yes", ignore.case = T, perl = T))
+
   big_data_clean$pat_symptomatic <- ifelse(!grepl("(?i)^no$|(?i)^yes$", big_data_clean$pat_symptomatic, ignore.case = T), NA, big_data_clean$pat_symptomatic)
 
 
   # Create a symptomatic column those missing variable using other symptoms variables
-  symptoms <- dplyr::select(big_data_clean, c(id, contains("sympt"), -contains(c("pat_symptomatic"))))
 
+  #separate dataframe
+  symptoms <- dplyr::select(big_data_clean, c(id, contains("sympt"), -contains(c("pat_symptomatic"))))
+  unknown_sympt<-na.omit(dplyr::select(clean_dict,unknown_sympt))
   #symptom variables
   symptvars <- names(symptoms)
 
@@ -130,8 +135,14 @@ clean_linelist <- function(inputdirectory,
   }), stringsAsFactors = F)
   # change all variations of no to standardised
   symptoms[, -1] <- data.frame(lapply(symptoms[, -1], function(x) {
-    gsub("(?i)^NAO$|(?i)^NON$|(?i)^NO$|(?i)^none$|(?i)^nil$|(?i)^null$|.*Know.*|(?i)^N/A$|(?i)^NA$|0|(?i)^not$|(?i)^n$|(?i)^nn$", "no", x, ignore.case = T, perl = T)
+    gsub(paste0("(?i)^", no$no, "$", collapse = "|"), "no", x, ignore.case = T, perl = T)
   }), stringsAsFactors = F)
+  # Change all variations of unknown symptoms to a blank (not na as this may lose information on the other symptoms column)
+  symptoms[, -1] <- data.frame(lapply(symptoms[, -1], function(x) {
+    gsub(paste0("(?i)", unknown_sympt$unknown_sympt, collapse = "|"), "", x, perl = T)
+  }), stringsAsFactors = F)
+
+  #regex clean
   # replace 1 or more spaces with one space
   symptoms[, -1] <- data.frame(lapply(symptoms[, -1], function(x) {
     gsub("\\s+", " ", x, ignore.case = T, perl = T)
@@ -139,7 +150,7 @@ clean_linelist <- function(inputdirectory,
   # blank cells to NA
   symptoms[symptoms == " "] <- NA
   symptoms[symptoms == ""] <- NA
-  symptoms[symptoms == "Not Available"] <- NA #wasnt caputured in merge fn but have added in as a variation for missing
+
 
   # determine if patient had symptoms
   # sum row if contains no or is missing (if all rows are no of missing =7)
@@ -150,14 +161,15 @@ clean_linelist <- function(inputdirectory,
   symptoms$pat_symptomatic <- NA
 
   # if row sums in symptoms_none=7 then all rows had no or missing in symptoms
-  symptoms$pat_symptomatic <- ifelse(symptoms$symptoms_none == 7, "no", symptoms$pat_symptomatic)
+  symptoms$pat_symptomatic <- ifelse(symptoms$symptoms_none == length(symptvars)-1, "no", symptoms$pat_symptomatic)
   # if row sums in symptoms_none<7 then at least one row had yes or other symptoms
-  symptoms$pat_symptomatic <- ifelse(symptoms$symptoms_none < 7, "yes", symptoms$pat_symptomatic)
+  symptoms$pat_symptomatic <- ifelse(symptoms$symptoms_none < length(symptvars)-1, "yes", symptoms$pat_symptomatic)
   # replace rows that had all missing in all symptoms
-  symptoms$pat_symptomatic <- ifelse(symptoms$symptoms_na == 7, NA, symptoms$pat_symptomatic)
+  symptoms$pat_symptomatic <- ifelse(symptoms$symptoms_na == length(symptvars)-1, NA, symptoms$pat_symptomatic)
 
-  # add id back to columns for merging
+  # add  back columns of interest in  merging
   symptoms_clean <- dplyr::select(symptoms, c(id,pat_symptomatic))
+
   # merge with big data to infill symptomatic yes or no, only if missing this variable
   big_data_clean <- merge(big_data_clean, symptoms_clean, by = "id")
   big_data_clean$pat_symptomatic.x <- ifelse(is.na(big_data_clean$pat_symptomatic.x), big_data_clean$pat_symptomatic.y, big_data_clean$pat_symptomatic.x) #.x was the original variable
@@ -173,120 +185,100 @@ clean_linelist <- function(inputdirectory,
   big_data_clean$pat_asymptomatic <- NULL
 
   # debug to check
-  sympt_test<- big_data_clean %>% select(id,contains("sympt"))
+  #sympt_test<- big_data_clean %>% select(id,contains("sympt"))
 
-  # remove now unneccessary symptoms variables but leave symptomatic variable (included removing the asymptomatic variable)
+  # remove now unneccessary specific symptoms variables but leave symptomatic variable (included removing the asymptomatic variable)
   big_data_clean <- big_data_clean[, -which(names(big_data_clean) %in% symptvars)]
 
 
   ## patinfo_occus ##
   # list of words/ strings associated with healthcare/ non occupations that should be cleaned up
-  occupation <- na.omit(select(clean_dict,patinfo_occus))
-  not_occupation<-na.omit(select(clean_dict,not_occupation))
+  occupation <- na.omit(dplyr::select(clean_dict,patinfo_occus))
+  not_occupation<-na.omit(dplyr::select(clean_dict,not_occupation))
 
-
-  # ensuring cleaning of "non occupations"
+  #regex cleaning
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "['?]|[[:punct:]]", replacement = "", ignore.case = T, perl = T))
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "[0-9]", replacement = "", ignore.case = T, perl = T))
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "^[a-zA-Z]$", replacement = "", ignore.case = T, perl = T))
-
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "\r\n", replacement = "", fixed = T))
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "\\s+", replacement = " ", ignore.case = T))
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "\\s+$", replacement = "", ignore.case = T))
+
+  # cleaning of "non occupations"
   big_data_clean$patinfo_occus <- ifelse(big_data_clean$patinfo_occus == "", NA, big_data_clean$patinfo_occus)
+  #case insentive exact string match remove these strings from occupation column
   big_data_clean$patinfo_occus <- ifelse(grepl(paste0("(?i)^", not_occupation$not_occupation, "$", collapse = "|"), big_data_clean$patinfo_occus, ignore.case = T), NA, big_data_clean$patinfo_occus)
 
-  # Create a column that creates TRUE for health care worker after a match or partial match with list
+  # Create a column that creates TRUE for health care worker after a match or partial match with list og HCW associated strings
   big_data_clean$hcw <- grepl(paste(occupation$patinfo_occus, collapse = "|"), big_data_clean$patinfo_occus, ignore.case = T)
-  # replce if occupation was missing
-  big_data_clean$hcw <- ifelse(is.na(big_data_clean$patinfo_occus), NA, big_data_clean$hcw) # this column is if healthcare workerso use in analysis as this
+  # replce hcw with NA if occupation was missing
+  big_data_clean$hcw <- ifelse(is.na(big_data_clean$patinfo_occus), NA, big_data_clean$hcw)  # use this column for hcw identification in analysis
 
-  # patcourse_status
-  # list of words/ strings associated with dead or alive
-  dead <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(dead) %>%
-    na.omit()
-  alive <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(alive) %>%
-    na.omit()
-  recovered <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(recovered) %>%
-    na.omit()
+
+
+  ## patcourse_status ##
+  # list of words/ strings associated with:
+  #dead
+  dead <- na.omit(dplyr::select(clean_dict,dead))
+  #alive
+  alive <- na.omit(dplyr::select(clean_dict,alive))
+  #recovered
+  recovered <- na.omit(dplyr::select(clean_dict,recovered))
+
   # if missing patcourse_status make equal to patcurrent status
   big_data_clean$patcourse_status <- ifelse(is.na(big_data_clean$patcourse_status), big_data_clean$patcurrent_status, big_data_clean$patcourse_status)
 
-  # remove any numbers in there or special characters
+  # regex cleaning
+  big_data_clean<- dplyr::mutate(big_data_clean, across(c(patcourse_status), gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T))
 
-  big_data_clean <- big_data_clean %>%
-    mutate_at("patcourse_status", .funs = gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T) %>%
-    mutate_at("patcurrent_status", .funs = gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T)
-  big_data_clean$patcourse_status_dead <- grepl(paste(dead$dead, collapse = "|"), big_data_clean$patcourse_status, ignore.case = T)
-  big_data_clean$patcourse_status_dead <- ifelse(big_data_clean$patcourse_status_dead == FALSE, NA, big_data_clean$patcourse_status_dead)
-  big_data_clean$patcourse_status_dead <- ifelse(big_data_clean$patcourse_status_dead == TRUE, "dead", big_data_clean$patcourse_status_dead)
-  big_data_clean$patcourse_status_alive <- grepl(paste(alive$alive, collapse = "|"), big_data_clean$patcourse_status, ignore.case = T)
-  big_data_clean$patcourse_status_alive <- ifelse(big_data_clean$patcourse_status_alive == FALSE, NA, big_data_clean$patcourse_status_alive)
-  big_data_clean$patcourse_status_alive <- ifelse(big_data_clean$patcourse_status_alive == TRUE, "alive", big_data_clean$patcourse_status_alive)
+  big_data_clean$patcourse_status_dead <-ifelse(grepl(paste0("(?i)", dead$dead, collapse = "|"), big_data_clean$patcourse_status, ignore.case = T), "dead", NA)
+  big_data_clean$patcourse_status_alive <-ifelse(grepl(paste0("(?i)", alive$alive, collapse = "|"), big_data_clean$patcourse_status, ignore.case = T), "alive", NA)
+  big_data_clean$patcourse_status_recovered <-ifelse(grepl(paste0("(?i)", recovered$recovered, collapse = "|"), big_data_clean$patcourse_status, ignore.case = T), "recovered", NA)
 
-
-  # identifying those alive and recovered
-  big_data_clean$patcourse_status_recovered <- ifelse(grepl(paste(recovered$recovered, collapse = "|"), big_data_clean$patcourse_status, ignore.case = T), "recovered", NA)
-  big_data_clean$patcourse_status_recovered <- ifelse(grepl(paste(recovered$recovered, collapse = "|"), big_data_clean$patcurrent_status, ignore.case = T), "recovered", big_data_clean$patcourse_status_recovered)
-  big_data_clean$patcourse_status_recovered <- ifelse(is.na(big_data_clean$patcourse_status_recovered) & !is.na(big_data_clean$patcourse_datedischarge), "recovered", big_data_clean$patcourse_status_recovered)
-
+  #fill in status column with above clean
   big_data_clean$patcourse_status <- ifelse(!is.na(big_data_clean$patcourse_status) & !is.na(big_data_clean$patcourse_status_dead), big_data_clean$patcourse_status_dead, big_data_clean$patcourse_status)
   big_data_clean$patcourse_status <- ifelse(!is.na(big_data_clean$patcourse_status) & !is.na(big_data_clean$patcourse_status_alive), big_data_clean$patcourse_status_alive, big_data_clean$patcourse_status)
-  big_data_clean$patcourse_status <- ifelse(big_data_clean$patcourse_status == "LTFU" | grepl("lost", big_data_clean$patcourse_status, ignore.case = T), "Lost to follow up", big_data_clean$patcourse_status)
 
+  big_data_clean$patcourse_status <- ifelse(!grepl("alive|dead", big_data_clean$patcourse_status, ignore.case = T), NA, big_data_clean$patcourse_status)
+  big_data_clean$patcourse_status_recovered <- ifelse(is.na(big_data_clean$patcourse_status_recovered), big_data_clean$patcourse_status, big_data_clean$patcourse_status_recovered)
 
   # drop columns created, uncommment if needed for debugging
   big_data_clean$patcourse_status_dead <- NULL
   big_data_clean$patcourse_status_alive <- NULL
-  big_data_clean$patcourse_status <- ifelse(!grepl("alive|dead|lost|pending", big_data_clean$patcourse_status, ignore.case = T), NA, big_data_clean$patcourse_status)
-  big_data_clean$patcourse_status_recovered <- ifelse(is.na(big_data_clean$patcourse_status_recovered), big_data_clean$patcourse_status, big_data_clean$patcourse_status_recovered)
+
 
   # some cases with a date of death but not "dead" in their status column?
-
   # Date of death handling.
-  # some countries used a date of outcome column, this needs cleaning if patient is not dead then empy the date of death column and put dtae in the discharge column
+  # some countries used a date of outcome column, this needs cleaning if patient is not dead then empy the date of death column and put date in the discharge column
   big_data_clean$patcourse_datedischarge <- ifelse(big_data_clean$patcourse_status != "dead", big_data_clean$patcourse_datedeath, big_data_clean$patcourse_datedischarge)
   big_data_clean$patcourse_datedeath <- ifelse(big_data_clean$patcourse_status != "dead", NA, big_data_clean$patcourse_datedeath)
   big_data_clean$patcourse_datedischarge <- ifelse(big_data_clean$patcourse_status == "dead", NA, big_data_clean$patcourse_datedischarge)
 
 
-  # report classif
-  probabale <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(probable) %>%
-    na.omit()
-  suspected <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(suspected) %>%
-    na.omit()
-  confirmed <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(confirmed) %>%
-    na.omit()
-  notacase <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(notacase) %>%
-    na.omit()
+  ## report classif ##
+  # list of words/ strings associated with:
+  #probable case
+  probable <- na.omit(dplyr::select(clean_dict,probable))
+  #suspected case
+  suspected <- na.omit(dplyr::select(clean_dict,suspected))
+  #confirmed case
+  confirmed <- na.omit(dplyr::select(clean_dict,confirmed))
+  #not a case
+  notacase <- na.omit(dplyr::select(clean_dict,notacase))
 
-  # remove any numbers in there or special characters
-  big_data_clean <- big_data_clean %>% mutate_at("report_classif", .funs = gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T)
-
+  # regex cleaning
+  big_data_clean<- dplyr::mutate(big_data_clean, across(c(report_classif), gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T))
   # probable
-  big_data_clean$report_classif_probable <- grepl(paste(probabale$probable, collapse = "|"), big_data_clean$report_classif, ignore.case = T)
-  big_data_clean$report_classif_probable <- ifelse(big_data_clean$report_classif_probable == FALSE, NA, big_data_clean$report_classif_probable)
-  big_data_clean$report_classif_probable <- ifelse(big_data_clean$report_classif_probable == TRUE, "probabale", big_data_clean$report_classif_probable)
+  big_data_clean$report_classif_probable <-ifelse(grepl(paste0("(?i)", probable$probable, collapse = "|"), big_data_clean$report_classif, ignore.case = T), "probable", NA)
   # suspected
-  big_data_clean$report_classif_suspected <- grepl(paste(suspected$suspected, collapse = "|"), big_data_clean$report_classif, ignore.case = T)
-  big_data_clean$report_classif_suspected <- ifelse(big_data_clean$report_classif_suspected == FALSE, NA, big_data_clean$report_classif_suspected)
-  big_data_clean$report_classif_suspected <- ifelse(big_data_clean$report_classif_suspected == TRUE, "suspected", big_data_clean$report_classif_suspected)
+  big_data_clean$report_classif_suspected <-ifelse(grepl(paste0("(?i)", suspected$suspected, collapse = "|"), big_data_clean$report_classif, ignore.case = T), "suspected", NA)
   # confirmed
-  big_data_clean$report_classif_confirmed <- grepl(paste(confirmed$confirmed, collapse = "|"), big_data_clean$report_classif, ignore.case = T)
-  big_data_clean$report_classif_confirmed <- ifelse(big_data_clean$report_classif_confirmed == FALSE, NA, big_data_clean$report_classif_confirmed)
-  big_data_clean$report_classif_confirmed <- ifelse(big_data_clean$report_classif_confirmed == TRUE, "confirmed", big_data_clean$report_classif_confirmed)
+  big_data_clean$report_classif_confirmed <-ifelse(grepl(paste0("(?i)", confirmed$confirmed, collapse = "|"), c(big_data_clean$report_classif), ignore.case = T), "confirmed", NA)
+  big_data_clean$report_classif_confirmed <-ifelse(grepl(paste0("(?i)", confirmed$confirmed, collapse = "|"), c(big_data_clean$lab_result), ignore.case = T), "confirmed", big_data_clean$report_classif_confirmed)
   # not a case
-  big_data_clean$report_classif_nac <- grepl(paste(notacase$notacase, collapse = "|"), big_data_clean$report_classif, ignore.case = T)
-  big_data_clean$report_classif_nac <- ifelse(big_data_clean$report_classif_nac == FALSE, NA, big_data_clean$report_classif_nac)
-  big_data_clean$report_classif_nac <- ifelse(big_data_clean$report_classif_nac == TRUE, "not a case", big_data_clean$report_classif_nac)
+  big_data_clean$report_classif_nac <-ifelse(grepl(paste0("(?i)", notacase$notacase, collapse = "|"), big_data_clean$report_classif, ignore.case = T), "not a case", NA)
 
+  #in fill variable with above clean
   big_data_clean$report_classif <- ifelse(!is.na(big_data_clean$report_classif) & !is.na(big_data_clean$report_classif_probable), big_data_clean$report_classif_probable, big_data_clean$report_classif)
   big_data_clean$report_classif <- ifelse(!is.na(big_data_clean$report_classif) & !is.na(big_data_clean$report_classif_suspected), big_data_clean$report_classif_suspected, big_data_clean$report_classif)
   big_data_clean$report_classif <- ifelse(!is.na(big_data_clean$report_classif) & !is.na(big_data_clean$report_classif_confirmed), big_data_clean$report_classif_confirmed, big_data_clean$report_classif)
@@ -302,37 +294,24 @@ clean_linelist <- function(inputdirectory,
 
   big_data_clean$report_classif <- ifelse(!grepl("suspected|probabale|confirmed|not a case", big_data_clean$report_classif, ignore.case = T), NA, big_data_clean$report_classif)
 
-  # use patcurrent status in the report classif if missing classification ??
-
 
   # labresult
-  positive <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(positive) %>%
-    na.omit()
-  negative <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(negative) %>%
-    na.omit()
-  inconclusive <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2) %>%
-    select(inconclusive) %>%
-    na.omit()
-  # remove accents from status columns
-  big_data_clean <- data.table(big_data_clean)
-  big_data_clean <- big_data_clean[, lab_result := stringi::stri_trans_general(str = lab_result, id = "Latin-ASCII")]
-  # remove any numbers in there or special characters
-  big_data_clean <- big_data_clean %>% mutate_at("lab_result", .funs = gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T)
-  # positive
-  big_data_clean$lab_result_pos <- grepl(paste(positive$positive, collapse = "|"), big_data_clean$lab_result, ignore.case = T)
-  big_data_clean$lab_result_pos <- ifelse(big_data_clean$lab_result_pos == FALSE, NA, big_data_clean$lab_result_pos)
-  big_data_clean$lab_result_pos <- ifelse(big_data_clean$lab_result_pos == TRUE, "positive", big_data_clean$lab_result_pos)
-  # negative
-  big_data_clean$lab_result_neg <- grepl(paste(negative$negative, collapse = "|"), big_data_clean$lab_result, ignore.case = T)
-  big_data_clean$lab_result_neg <- ifelse(big_data_clean$lab_result_neg == FALSE, NA, big_data_clean$lab_result_neg)
-  big_data_clean$lab_result_neg <- ifelse(big_data_clean$lab_result_neg == TRUE, "negative", big_data_clean$lab_result_neg)
-  # inconclusive
-  big_data_clean$lab_result_incon <- grepl(paste(inconclusive$inconclusive, collapse = "|"), big_data_clean$lab_result, ignore.case = T)
-  big_data_clean$lab_result_incon <- ifelse(big_data_clean$lab_result_incon == FALSE, NA, big_data_clean$lab_result_incon)
-  big_data_clean$lab_result_incon <- ifelse(big_data_clean$lab_result_incon == TRUE, "inconclusive", big_data_clean$lab_result_incon)
+  positive <- na.omit(dplyr::select(clean_dict,positive))
+  negative <- na.omit(dplyr::select(clean_dict,negative))
+  inconclusive <- na.omit(dplyr::select(clean_dict,inconclusive))
 
+  # regex cleaning
+  big_data_clean<-dplyr::mutate(big_data_clean, across(c("lab_result"), stringi::stri_trans_general, "Latin-ASCII"))
+  big_data_clean<- dplyr::mutate(big_data_clean, across(c(lab_result), gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T))
+
+  # positive
+  big_data_clean$lab_result_pos <-ifelse(grepl(paste0("(?i)", positive$positive, collapse = "|"), big_data_clean$lab_result, ignore.case = T), "positive", NA)
+  # negative
+  big_data_clean$lab_result_neg <-ifelse(grepl(paste0("(?i)", negative$negative, collapse = "|"), big_data_clean$lab_result, ignore.case = T), "negative", NA)
+  # inconclusive
+  big_data_clean$lab_result_incon <-ifelse(grepl(paste0("(?i)", inconclusive$inconclusive, collapse = "|"), big_data_clean$lab_result, ignore.case = T), "inconclusive", NA)
+
+  #in fill variable with above clean
   big_data_clean$lab_result <- ifelse(!is.na(big_data_clean$lab_result) & !is.na(big_data_clean$lab_result_pos), big_data_clean$lab_result_pos, big_data_clean$lab_result)
   big_data_clean$lab_result <- ifelse(!is.na(big_data_clean$lab_result) & !is.na(big_data_clean$lab_result_neg), big_data_clean$lab_result_neg, big_data_clean$lab_result)
   big_data_clean$lab_result <- ifelse(!is.na(big_data_clean$lab_result) & !is.na(big_data_clean$lab_result_incon), big_data_clean$lab_result_incon, big_data_clean$lab_result)
@@ -345,36 +324,37 @@ clean_linelist <- function(inputdirectory,
 
   # using lab result to confirm case
   # create report_classif_alice variable to work off until we decide how this is to be cleaned
-
+  #new addition to report classif variable by looking for confirmed instances in the lab result variable - cleaning is above
   big_data_clean$report_classif_alice <- big_data_clean$report_classif
   big_data_clean$report_classif_alice <- ifelse(big_data_clean$lab_result == "positive" & !is.na(big_data_clean$lab_result), "confirmed", big_data_clean$report_classif)
 
-  # load in dictionary for linelists that are only the positves / confirmed cases
-  linelist_pos <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 5)
+
+  # load in dictionary for linelists that are only the positves / confirmed cases as pre specified
+  linelist_pos <- confirmed_dict
   linelist_pos <- filter(linelist_pos, !is.na(linelist_pos$labresult))
 
   big_data_clean$report_classif_alice <- ifelse(is.na(big_data_clean$report_classif_alice), linelist_pos$classification[match(big_data_clean$country_iso, linelist_pos$country_iso)], big_data_clean$report_classif_alice)
   big_data_clean$lab_result <- ifelse(is.na(big_data_clean$lab_result), linelist_pos$labresult[match(big_data_clean$country_iso, linelist_pos$country_iso)], big_data_clean$lab_result)
 
 
-  ### comorbidies
-  comorbs <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 3)
-  clean_noyes <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 2)
-  big_data_comorbs <- select(big_data_clean, contains("comcond"))
+  ## comorbidies ##
+  big_data_comorbs <- dplyr::select(big_data_clean, contains("comcond"))
   big_data_comorbs$id <- rownames(big_data_comorbs)
-  # partial string matches using above spreadsheet disctionary for each ncd, checking in both comcond columns
-  big_data_comorbs$diabetes <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$diabetes), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$asthma <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$asthma), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$hypertension <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$hypertension), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$obesity <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$obesity), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$cardiovascular_disease <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$`cardiovascular disease`), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$pregnancy <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$Pregnancy), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$renal_disease <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$`Renal disease`), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$drepanocytosis <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$Drepanocytosis), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$chronic_pulmonary <- apply(big_data_comorbs, 1, function(x) any(grepl(paste0(na.omit(comorbs$`Chronic pulmonary disease`), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$cancer <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$Cancer), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$tuberculosis <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$Tuberculosis), collapse = "|"), x, ignore.case = T)))
-  big_data_comorbs$other_comorb <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(comorbs$Other), collapse = "|"), x, ignore.case = T)))
+  # partial string matches using above spreadsheet dictionary for each ncd, checking in both comcond columns
+  #curretnly this takes a while to run, other options dont seem to work but this part could be developed for a quicker run
+
+  big_data_comorbs$diabetes <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$diabetes), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$asthma <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$asthma), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$hypertension <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$hypertension), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$obesity <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$obesity), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$cardiovascular_disease <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$cardiovascular.disease), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$pregnancy <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$Pregnancy), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$renal_disease <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$Renal.disease), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$drepanocytosis <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$Drepanocytosis), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$chronic_pulmonary <- apply(big_data_comorbs, 1, function(x) any(grepl(paste0(na.omit(clean_dict$Chronic.pulmonary.disease), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$cancer <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$Cancer), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$tuberculosis <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$Tuberculosis), collapse = "|"), x, ignore.case = T)))
+  big_data_comorbs$other_comorb <- apply(big_data_comorbs, 1, function(x) any(grepl(paste(na.omit(clean_dict$Other), collapse = "|"), x, ignore.case = T)))
 
   # changes all TRUE to 1 and FALSE to NA ftom grepl
   big_data_comorbs <- data.frame(lapply(big_data_comorbs, function(x) {
@@ -385,11 +365,12 @@ clean_linelist <- function(inputdirectory,
   }), stringsAsFactors = F)
   # changes variations of yes and no to standard
   big_data_comorbs <- data.frame(lapply(big_data_comorbs, function(x) {
-    gsub(paste0("(?i)^", na.omit(clean_noyes$no), "$", collapse = "|"), "no", x, ignore.case = T, perl = T)
+    gsub(paste0("(?i)^", no$no, "$", collapse = "|"), "no", x, ignore.case = T, perl = T)
   }), stringsAsFactors = F)
   big_data_comorbs <- data.frame(lapply(big_data_comorbs, function(x) {
-    gsub(paste0("(?i)^", na.omit(clean_noyes$yes), "$", collapse = "|"), "yes", x, ignore.case = T, perl = T)
+    gsub(paste0("(?i)^", yes$yes, "$", collapse = "|"), "yes", x, ignore.case = T, perl = T)
   }), stringsAsFactors = F)
+
 
   # removed anything entered in here that is not yes or no or not given
   big_data_comorbs$comcond_preexist1 <- ifelse(grepl("yes|no", big_data_comorbs$comcond_preexist1, ignore.case = T), big_data_comorbs$comcond_preexist1, NA)
@@ -400,7 +381,7 @@ clean_linelist <- function(inputdirectory,
 
   # If RowSums=0 then there are no ncd specified
   big_data_comorbs <- dplyr::mutate(big_data_comorbs, across(c(-comcond_preexist1, -comcond_preexist), as.numeric))
-  big_data_comorbs$comcond_preexsist_yesno <- rowSums(select(
+  big_data_comorbs$comcond_preexsist_yesno <- rowSums(dplyr::select(
     big_data_comorbs, diabetes, asthma, hypertension, cancer,
     renal_disease, cardiovascular_disease, obesity, tuberculosis, drepanocytosis, chronic_pulmonary, other_comorb
   ), na.rm = T)
@@ -410,7 +391,7 @@ clean_linelist <- function(inputdirectory,
 
   big_data_comorbs$comcond_preexsist_yesno <- NULL # removing this placeholder variable to redo below including not specified
 
-  big_data_comorbs$comcond_preexsist_count <- rowSums(select(big_data_comorbs, c(
+  big_data_comorbs$comcond_preexsist_count <- rowSums(dplyr::select(big_data_comorbs, c(
     diabetes, asthma, hypertension, cancer,
     renal_disease, cardiovascular_disease, obesity, tuberculosis, drepanocytosis, chronic_pulmonary, not_specified_comorb, other_comorb
   )), na.rm = T)
@@ -442,7 +423,7 @@ clean_linelist <- function(inputdirectory,
 
 
   ### capital city
-  country <- rio::import(here::here("inst/", "Cleaning_dict_alice.xlsx"), which = 4)
+  country <- capital_dict
   # varible of country full name from aboove dictionary
   big_data_clean$country_full <- country$country_full[match(big_data_clean$country_iso, country$country_iso)]
   # add column that is the capital city
@@ -457,9 +438,13 @@ clean_linelist <- function(inputdirectory,
   big_data_clean$report_date <- dplyr::if_else(is.na(big_data_clean$report_date), big_data_clean$lab_resdate, big_data_clean$report_date)
   big_data_clean$report_date <- dplyr::if_else(big_data_clean$report_date < as.Date("2020-01-01") | big_data_clean$report_date > as.Date(Sys.Date()), as.Date(NA), big_data_clean$report_date)
 
+  rio::export(big_data_clean,
+              # system.file(
+              file=here::here(outputdirectory, paste0(outputname, Sys.Date(), ".xlsx"))
+              # package = "covidmonitor"),
+  )
 
 
-  openxlsx::write.xlsx(big_data_clean, paste0("inst/Cleaned_linelist_", Sys.Date(), ".xlsx"))
 }
 
 
