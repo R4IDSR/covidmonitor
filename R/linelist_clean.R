@@ -1,5 +1,3 @@
-library(dplyr)
-library(data.table)
 #' Merge linelists from AFRO
 #'
 #' @param inputdirectory path to folder containing datasets
