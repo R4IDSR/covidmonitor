@@ -359,7 +359,8 @@ merge_linelist <- function(inputdirectory,
     # make column for ISO code
     output_sheet$country_iso <- iso
     # change all date columns (newly created ones are logical)
-    output_sheet <- dplyr::mutate(output_sheet, dplyr::across(contains("date"), as.Date, origin = "1899-12-30"))
+    # ALEX no need to specify origin because relevant excel dates all handled above
+    output_sheet <- dplyr::mutate(output_sheet, dplyr::across(contains("date"), as.Date))
     # some ages had issues on and wouldnt merge
     output_sheet$patinfo_ageonset <- as.numeric(iconv(output_sheet$patinfo_ageonset, "utf-8", "ascii", sub = ""))
 
