@@ -7,19 +7,16 @@
 #' @param outputname character string to name merged file
 #'
 #' @importFrom rio import export
-#' @importFrom tidyr fill pivot_wider
-#' @importFrom matchmaker match_vec
-#' @importFrom dplyr bind_rows
-#' @importFrom dplyr mutate filter select
-#' @importFrom janitor clean_names
+#' @importFrom dplyr mutate across contains if_else filter select
 #' @importFrom stringi stri_trans_general
 #' @author Alice Carr, Alex Spina
 #' @export
 
-library(dplyr) # still have this here because across not supported in standard dplyr ?
+## TODO: delete this
+# library(dplyr) # still have this here because across not supported in standard dplyr ?
 
 # the inputs that i have been using
-inputdirectory <- "Merged_linelist_2021-01-17.xlsx"
+# inputdirectory <- "Merged_linelist_2021-01-17.xlsx"
 # outputdirectory <- "inst/"
 # outputname <- "Merged_linelist_"
 
@@ -111,9 +108,9 @@ clean_linelist <- function(inputdirectory,
   # next steps requrie dataframe format
   big_data_clean <- data.frame(big_data_clean)
   # ensure original pat_symptomatic variable contains no numbers of special characters and only yes or no
-  big_data_clean <-dplyr::mutate(big_data_clean, across(c(pat_symptomatic), gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T))
-  big_data_clean <-dplyr::mutate(big_data_clean, across(c(pat_symptomatic), gsub, pattern = paste0("(?i)^", no$no, "$", collapse = "|"), replacement = "no", ignore.case = T, perl = T))
-  big_data_clean <-dplyr::mutate(big_data_clean, across(c(pat_symptomatic), gsub, pattern = paste0("(?i)^", yes$yes, "$", collapse = "|"), replacement = "yes", ignore.case = T, perl = T))
+  big_data_clean <- dplyr::mutate(big_data_clean, across(c(pat_symptomatic), gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T))
+  big_data_clean <- dplyr::mutate(big_data_clean, across(c(pat_symptomatic), gsub, pattern = paste0("(?i)^", no$no, "$", collapse = "|"), replacement = "no", ignore.case = T, perl = T))
+  big_data_clean <- dplyr::mutate(big_data_clean, across(c(pat_symptomatic), gsub, pattern = paste0("(?i)^", yes$yes, "$", collapse = "|"), replacement = "yes", ignore.case = T, perl = T))
 
   big_data_clean$pat_symptomatic <- ifelse(!grepl("(?i)^no$|(?i)^yes$", big_data_clean$pat_symptomatic, ignore.case = T), NA, big_data_clean$pat_symptomatic)
 
@@ -122,7 +119,7 @@ clean_linelist <- function(inputdirectory,
 
   #separate dataframe
   symptoms <- dplyr::select(big_data_clean, c(id, contains("sympt"), -contains(c("pat_symptomatic"))))
-  unknown_sympt<-na.omit(dplyr::select(clean_dict,unknown_sympt))
+  unknown_sympt <- na.omit(dplyr::select(clean_dict,unknown_sympt))
   #symptom variables
   symptvars <- names(symptoms)
 
@@ -192,7 +189,7 @@ clean_linelist <- function(inputdirectory,
   ## patinfo_occus ##
   # list of words/ strings associated with healthcare/ non occupations that should be cleaned up
   occupation <- na.omit(dplyr::select(clean_dict,patinfo_occus))
-  not_occupation<-na.omit(dplyr::select(clean_dict,not_occupation))
+  not_occupation <- na.omit(dplyr::select(clean_dict,not_occupation))
 
   #regex cleaning
   big_data_clean <- dplyr::mutate(big_data_clean, across(c(patinfo_occus), gsub, pattern = "['?]|[[:punct:]]", replacement = "", ignore.case = T, perl = T))
