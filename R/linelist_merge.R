@@ -174,7 +174,7 @@ merge_linelist <- function(inputdirectory,
     og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "\\s+", replacement = " ", ignore.case = T))
     og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "\\s+$", replacement = "", ignore.case = T))
     # must keep this pattern all one line or doesnt work
-    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$|(?i)^Unk$|(?i)^NP$", replacement = NA, perl = T))
+    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$|(?i)^Unk$|(?i)^NP$|(?i)^not avaliable$", replacement = NA, perl = T))
 
 #     Alex: i think this is a duplicate of what is happening above....
 #     names(og_sheet) <- gsub(x = names(og_sheet), pattern ="\r\n",replacement = "", fixed = T)
