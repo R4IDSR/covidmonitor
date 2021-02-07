@@ -14,6 +14,15 @@
 #'
 #' @param clean logical (TRUE/FALSE) of whether to clean the output data frame
 #'
+#' @param variabledict path to dictionary file containing variable definitions.
+#' Default is a predefined within the package. For details of how to use your own
+#' file see [README](https://github.com/R4IDSR/covidmonitor)
+#'
+#' @param cleaningdict path to dictionary file containing cleaning rule definitions
+#' for country names.
+#' Default is a predefined within the package. For details of how to use your own
+#' file see [README](https://github.com/R4IDSR/covidmonitor)
+#'
 #' @importFrom rio import export
 #' @importFrom tidyr fill pivot_wider
 #' @importFrom matchmaker match_vec
@@ -25,9 +34,12 @@
 merge_kpi <- function(inputdirectory,
                       isotomerge = "AFRO",
                       outputdirectory = tempdir(),
-                      outputname = "kpi_merged",
+                      outputname = "kpi_merged_",
                       wide = TRUE,
-                      clean = TRUE) {
+                      clean = TRUE,
+                      variabledict = system.file("extdata", "mne_dictionary.xlsx", package = "covidmonitor"),
+                      cleaningdict = system.file("extdata", "cleaning_dictionary.xlsx", package = "covidmonitor")
+                      ) {
 
   # Read in file list. Creat output directory.
   files <- list.files(path = inputdirectory,
@@ -36,7 +48,7 @@ merge_kpi <- function(inputdirectory,
 
   # drop files we dont want
   # those that have not been assigned a name yet and the combined.csv
-  files <- files[-grep("---.|Combined.csv|CombinedKPIDataFile.xlsx|!", files)]
+  files <- files[-grep("---.|Combined.|CombinedKPIDataFile|!", files)]
 
 
   if (length(files) == 0) {
@@ -62,16 +74,14 @@ merge_kpi <- function(inputdirectory,
 
   # read in dictionary for renaming variables
   var_dict <- rio::import(
-    system.file("extdata", "mne_dictionary.xlsx",
-                package = "covidmonitor"),
-    which = 1
+    variabledict,
+    which = "var_defs"
   )
 
   # read in dictionary for checking comments empty or not
   comment_dict <- rio::import(
-    system.file("extdata", "mne_dictionary.xlsx",
-                package = "covidmonitor"),
-    which = 2
+    variabledict,
+    which = "comment_refs"
   )
 
 
@@ -582,8 +592,17 @@ merge_kpi <- function(inputdirectory,
   output <- dplyr::bind_rows(output)
 
   if (clean) {
+
+    ## read in cleaning dictionary (for countries)
+    clean_dict <- rio::import(
+      cleaningdict,
+      which = "country"
+    )
+
+    ## run the cleaning function
     output <- clean_kpi(inputfile = output,
                         var_dict = var_dict,
+                        clean_dict = clean_dict,
                         wide = wide)
   }
 

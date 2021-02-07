@@ -5,16 +5,20 @@
 #'
 #' @param var_dict data dictionary sourced in [covidmonitor::merge_kpi()]
 #'
+#' @param clean_dict data cleaning dictionary sourced in [covidmonitor::merge_kpi()]
+#'
 #' @param wide logical (TRUE/FALSE) of whether the output data frame should be
 #' in wide format (default), else will produce long format data - defined in
 #' [covidmonitor::merge_kpi()]
 #'
 #' @importFrom dplyr mutate case_when across all_of
+#' @importFrom matchmaker match_vec
 #'
 #' @author Alice Carr, Alex Spina
 
 clean_kpi <- function(inputfile,
                       var_dict,
+                      clean_dict,
                       wide) {
 
 
@@ -33,28 +37,12 @@ clean_kpi <- function(inputfile,
   ## clean the wide version
   if (wide) {
 
-    ## TODO: fix country coding to be based off a common dictionary
+    ## dictionary recode variable names (once so dont have to repeat lower down)
+    inputfile$country <- matchmaker::match_vec(inputfile$country,
+                                         dictionary = clean_dict,
+                                         from = "old",
+                                         to = "new")
 
-    inputfile <- dplyr::mutate(inputfile,
-                               country = dplyr::case_when(
-                                 country == "Burkina Faso"         ~       "Burkina Faso",
-                                 country == "COMORES"              ~       "Comores",
-                                 country == "CÔTE D'IVOIRE"        ~       "Cote d'Ivoire",
-                                 country == "Equatorial Guinea"    ~       "Equatorial Guinea",
-                                 country == "Eswatini"             ~       "Eswatini",
-                                 country == "GABON"                ~       "Gabon",
-                                 country == "Ghana"                ~       "Ghana",
-                                 country == "NIGER"                ~       "Niger",
-                                 country == "République du Congo"  ~       "Republic of Congo",
-                                 country == "SAO TOME ET PRINCIPE" ~       "Sao Tome & Principe",
-                                 country == "SENEGAL"              ~       "Senegal",
-                                 country == "Seychelles"           ~       "Seychelles",
-                                 country == "Sierra Leone"         ~       "Sierra Leone",
-                                 country == "South Sudan"          ~       "South Sudan",
-                                 country == "Uganda"               ~       "Uganda")
-
-
-    )
 
     ## fix numeric variables
     inputfile <- dplyr::mutate(inputfile,
@@ -85,29 +73,11 @@ clean_kpi <- function(inputfile,
   } else {
     ## clean the long version
 
-
-    ## TODO: fix country coding to be based off a common dictionary
-    inputfile <- dplyr::mutate(inputfile,
-                               country = dplyr::case_when(
-                                 country == "Burkina Faso"         ~       "Burkina Faso",
-                                 country == "COMORES"              ~       "Comores",
-                                 country == "CÔTE D'IVOIRE"        ~       "Cote d'Ivoire",
-                                 country == "Equatorial Guinea"    ~       "Equatorial Guinea",
-                                 country == "Eswatini"             ~       "Eswatini",
-                                 country == "GABON"                ~       "Gabon",
-                                 country == "Ghana"                ~       "Ghana",
-                                 country == "NIGER"                ~       "Niger",
-                                 country == "République du Congo"  ~       "Republic of Congo",
-                                 country == "SAO TOME ET PRINCIPE" ~       "Sao Tome & Principe",
-                                 country == "SENEGAL"              ~       "Senegal",
-                                 country == "Seychelles"           ~       "Seychelles",
-                                 country == "Sierra Leone"         ~       "Sierra Leone",
-                                 country == "South Sudan"          ~       "South Sudan",
-                                 country == "Uganda"               ~       "Uganda")
-
-
-    )
-
+    ## dictionary recode variable names (once so dont have to repeat lower down)
+    inputfile$country <- matchmaker::match_vec(inputfile$country,
+                                               dictionary = clean_dict,
+                                               from = "old",
+                                               to = "new")
 
     ## clean reporting frequency
     inputfile <- dplyr::mutate(inputfile,

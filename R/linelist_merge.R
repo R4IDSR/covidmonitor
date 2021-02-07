@@ -1,4 +1,4 @@
-#' Merge linelists from AFRO
+#' Merge COVID-19 linelists from WHO AFRO
 #'
 #' @param inputdirectory path to folder containing datasets
 #'
@@ -13,6 +13,10 @@
 #' @param quietly TRUE/FALSE of whether to show message of which country being
 #' processed as the function runs through files. If false will show message for
 #' each country (default = TRUE).
+#'
+#' @param variabledict path to dictionary file containing variable definitions.
+#' Default is a predefined within the package. For details of how to use your own
+#' file see [README](https://github.com/R4IDSR/covidmonitor)
 #'
 #'
 #' @importFrom rio import export
@@ -41,7 +45,9 @@ merge_linelist <- function(inputdirectory,
                            outputdirectory = tempdir(),
                            outputname = "Merged_linelist_",
                            isotomerge = "AFRO",
-                           quietly = TRUE) {
+                           quietly = TRUE,
+                           variabledict = system.file("extdata", "linelist_dictionary.xlsx", package = "covidmonitor")
+                           ) {
 
   # define countries in AFRO
   if (isotomerge == "AFRO") {
@@ -90,9 +96,8 @@ merge_linelist <- function(inputdirectory,
 
   # read in dictionary for renaming variables country specific sheet
   var_dict <- rio::import(
-    system.file("extdata", "linelist_dictionary.xlsx",
-    package = "covidmonitor"),
-    which = 1
+    variabledict,
+    which = "var_names"
   )
 
   # clean variable names for dictionary
@@ -114,17 +119,15 @@ merge_linelist <- function(inputdirectory,
 
   # read in template and sheet checking dictionary
   template_check <- rio::import(
-    system.file("extdata", "linelist_dictionary.xlsx",
-    package = "covidmonitor"),
-    which = 3
+    variabledict,
+    which = "country_list"
   )
   template_check <- janitor::clean_names(template_check)
 
   # read in variables of interest
   variables_to_keep <- rio::import(
-    system.file("extdata", "linelist_dictionary.xlsx",
-    package = "covidmonitor"),
-    which = 4
+    variabledict,
+    which = "vars_keep"
   )
 
   variables_to_keep <- janitor::clean_names(variables_to_keep)
@@ -174,7 +177,7 @@ merge_linelist <- function(inputdirectory,
     og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "\\s+", replacement = " ", ignore.case = T))
     og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "\\s+$", replacement = "", ignore.case = T))
     # must keep this pattern all one line or doesnt work
-    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$|(?i)^Unk$|(?i)^NP$", replacement = NA, perl = T))
+    og_sheet <- dplyr::mutate(og_sheet, dplyr::across(c(-1), gsub, pattern = "(?i)^NA$|(?i)^N/A$|(?i)^N/A,|(?i)^N\\A$|(?i)^Unknown$|(?i)^dont know$|(?i)^Unkown$|(?i)^N.A$|(?i)^NE SAIT PAS$|(?i)^inconnu$|^ $|(?i)^Nao aplicavel$|(?i)^Sem informacao$|(?i)^Unk$|(?i)^NP$|(?i)^not avaliable$", replacement = NA, perl = T))
 
 #     Alex: i think this is a duplicate of what is happening above....
 #     names(og_sheet) <- gsub(x = names(og_sheet), pattern ="\r\n",replacement = "", fixed = T)

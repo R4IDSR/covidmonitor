@@ -16,11 +16,11 @@ BugReports: https://github.com/R4IDSR/covidmonitor/issues
 URL: https://github.com/R4IDSR/covidmonitor
 Imports: 
   dplyr, 
+  janitor, 
   lubridate, 
   matchmaker, 
   rio, 
   tidyr, 
-  janitor, 
   tools
 Encoding: UTF-8
 LazyData: true

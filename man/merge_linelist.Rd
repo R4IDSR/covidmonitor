@@ -2,14 +2,16 @@
 % Please edit documentation in R/linelist_merge.R
 \name{merge_linelist}
 \alias{merge_linelist}
-\title{Merge linelists from AFRO}
+\title{Merge COVID-19 linelists from WHO AFRO}
 \usage{
 merge_linelist(
   inputdirectory,
   outputdirectory = tempdir(),
   outputname = "Merged_linelist_",
   isotomerge = "AFRO",
-  quietly = TRUE
+  quietly = TRUE,
+  variabledict = system.file("extdata", "linelist_dictionary.xlsx", package =
+    "covidmonitor")
 )
 }
 \arguments{
@@ -26,9 +28,13 @@ See details for countries currently supported.}
 \item{quietly}{TRUE/FALSE of whether to show message of which country being
 processed as the function runs through files. If false will show message for
 each country (default = TRUE).}
+
+\item{variabledict}{path to dictionary file containing variable definitions.
+Default is a predefined within the package. For details of how to use your own
+file see \href{https://github.com/R4IDSR/covidmonitor}{README}}
 }
 \description{
-Merge linelists from AFRO
+Merge COVID-19 linelists from WHO AFRO
 }
 \details{
 Countries currently supported include:

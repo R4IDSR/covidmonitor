@@ -8,9 +8,13 @@ merge_kpi(
   inputdirectory,
   isotomerge = "AFRO",
   outputdirectory = tempdir(),
-  outputname = "kpi_merged",
+  outputname = "kpi_merged_",
   wide = TRUE,
-  clean = TRUE
+  clean = TRUE,
+  variabledict = system.file("extdata", "mne_dictionary.xlsx", package =
+    "covidmonitor"),
+  cleaningdict = system.file("inst", "cleaning_dictionary.xlsx", package =
+    "covidmonitor")
 )
 }
 \arguments{
@@ -27,6 +31,15 @@ combine multiple countries with c(...), default is "AFRO" to read in all availab
 in wide format (default), else will produce long format data}
 
 \item{clean}{logical (TRUE/FALSE) of whether to clean the output data frame}
+
+\item{variabledict}{path to dictionary file containing variable definitions.
+Default is a predefined within the package. For details of how to use your own
+file see \href{https://github.com/R4IDSR/covidmonitor}{README}}
+
+\item{cleaningdict}{path to dictionary file containing cleaning rule definitions
+for country names.
+Default is a predefined within the package. For details of how to use your own
+file see \href{https://github.com/R4IDSR/covidmonitor}{README}}
 }
 \description{
 Merge country monitoring and evaluation excel tool data (key performance indicators)

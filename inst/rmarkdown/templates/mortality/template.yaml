@@ -1,0 +1,6 @@
+name: Mortality analysis script
+description: >
+  This is the code that was used to analyse linelist data for the publication
+  submitted to epidemiology & infection entitled "Time to death and risk factors
+  associated with mortality among COVID-19 cases in the WHO African region"
+create_dir: false
