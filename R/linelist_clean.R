@@ -27,7 +27,7 @@ clean_linelist <- function(inputfile,
   #import cleaning dictionary
   clean_dict <- rio::import(
     system.file(
-    "inst", "Cleaning_dict_alice.xlsx",
+    "inst", "cleaning_dictionary.xlsx",
     package = "covidmonitor"),
     which = "all_clean",
     readxl = FALSE)
@@ -39,7 +39,7 @@ clean_linelist <- function(inputfile,
   #capital city
   capital_dict <- rio::import(
     system.file(
-      "inst", "Cleaning_dict_alice.xlsx",
+      "inst", "cleaning_dictionary.xlsx",
       package = "covidmonitor"),
     which = "capital",
     readxl = FALSE)
@@ -47,7 +47,7 @@ clean_linelist <- function(inputfile,
   #somelinelists are only of confimred cases so are missing the outcome variable but this should be made confirmed and lab result positive for these countries
   confirmed_dict <- rio::import(
     system.file(
-      "inst", "Cleaning_dict_alice.xlsx",
+      "inst", "cleaning_dictionary.xlsx",
       package = "covidmonitor"),
     which = "confirmed",
     readxl = FALSE)
