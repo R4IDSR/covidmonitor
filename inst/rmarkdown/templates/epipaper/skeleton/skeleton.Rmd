@@ -1,6 +1,14 @@
 ---
-title: "epipaperanalysis"
-output: html_document
+title: "COVID-19 Pandemic in the African Region"
+subtitle: "Ongoing analysis for epi paper"
+output:
+  powerpoint_presentation: 
+    keep_md: true
+
+  author: "Alice Carr"
+header-includes:
+   - \usepackage{floatrow}
+   - \floatsetup[figure]{capposition=top}
 ---
 
 ```{r setup, include=FALSE}
@@ -12,14 +20,16 @@ output: html_document
 # (run the command .libPaths() to see the folder path). 
 # For help installing packages, please visit https://r4epis.netlify.com/welcome
 
+#issue with Pandoc on my computer this is te only thing that solves it
+Sys.setenv("RSTUDIO_PANDOC" = "PATH TO PANDOC BIN")
 
 # set options for rmarkdown 
 knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
                       message = FALSE, # hide all messages in output
                       warning = FALSE, # hide all warnings in output
                       collapse = TRUE, # combine all source/output to single block
-                      fig.width = 20,  # define figure width
-                      fig.height = 8,  # define figure height
+                      fig.width = 30,  # define figure width
+                      fig.height = 20,  # define figure height
                       dpi = 300,       # define figure definitions
                       cache = F)       # run all code chunks (even if repeated)
 
@@ -43,7 +53,9 @@ required_packages <- c(
                        "patchwork",      # combine ggplots 
                        "RColorBrewer",   # for defining colour schemes
                        "purrr",          # for running regressions over multiple countries 
-                       "broom"           # for cleaning up regression outputs
+                       "broom",          # for cleaning up regression outputs
+                       "linelist",       # for cleanig variable names
+                       "ggpubr"          # for tables
                        )
   
 for (pkg in required_packages) {
@@ -55,29 +67,13 @@ for (pkg in required_packages) {
   library(pkg, character.only = TRUE)
 }
 
-
-
 ## define a theme for ggplot (so all look similar) 
-epi_theme <- theme_classic() + 
-    theme(
-      text = element_text(size = 18, family = "Arial"), 
-      ## rotate x axis labels
-      axis.text.x  = element_text(angle = 45, vjust = 0.5),
-      axis.title   = element_text(color = "black", face = "bold"), 
-      legend.title = element_blank(), 
-      legend.text  = element_text(color = "black"), 
-      legend.position  = "bottom",
-      legend.direction = "horizontal",
-      ## colour and size the grid lines in the plot 
-      # panel.grid.minor = element_line(colour = "grey90", size = 0.5), 
-      panel.grid.major = element_line(colour = "grey90")
-      )
 pub_theme4 <- theme(
   text = element_text(family = "Arial"),
-  axis.text.x = element_text(size = 24, angle = 45, color = "black", vjust = 0.5, hjust = 0.5),
-  axis.text.y = element_text(size = 24, color = "black"),
-  axis.title.y = element_text(size = 26, face = "bold", color = "black"),
-  axis.title.x = element_text(size = 26, face = "bold", color = "black"),
+  axis.text.x = element_text(size = 20, angle = 45, color = "black", vjust = 0.5, hjust = 0.5),
+  axis.text.y = element_text(size = 20, color = "black"),
+  axis.title.y = element_text(size = 24, face = "bold", color = "black"),
+  axis.title.x = element_text(size = 24, face = "bold", color = "black"),
   panel.grid.major.y = element_line(size = .5, color = "gray", linetype = "solid"),
   panel.grid.major.x = element_blank(),
   panel.grid.minor.x = element_blank(),
@@ -86,7 +82,7 @@ pub_theme4 <- theme(
   axis.line = element_line(colour = "black"), legend.position = "bottom",
   legend.direction = "horizontal",
   legend.key.size = unit(0.4, "cm"),
-  legend.title = element_text(size = 26, face = "bold.italic"),
+  legend.title = element_text(size = 24, face = "bold.italic"),
   legend.text = element_text(size = 24, face = "italic"),
   # panel.border=element_rect(colour="black", fill=NA, size=1),
   plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "in")
@@ -104,7 +100,10 @@ options(scipen=999)
 
 df <- clean_variable_names(rio::import(here("inst", "extdata", "ConfirmedCases.csv"), na.strings=c("","NA")))
 
-df_analyse <- mutate(df, across(contains("date"), as.Date))
+df_analyse <- mutate(df, across(contains("date"), as.Date)) %>%
+  mutate(finaloutcome_new=ifelse(grepl("dead",finaloutcome,ignore.case = T),"Dead",
+                                           ifelse(!grepl("dead",finaloutcome,ignore.case = T),"Alive",NA)),
+         finalepiclassification_new=ifelse(!is.na(finalepiclassification),"Confirmed",NA))
 
 population <- rio::import("https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/EXCEL_FILES/1_Population/WPP2019_POP_F01_1_TOTAL_POPULATION_BOTH_SEXES.xlsx")
 ## clean up the population data
@@ -131,31 +130,30 @@ population <- population %>%
 
 ```
 
-## Tables
-
 ```{r echo=F}
 
 counts <- df_analyse %>%
   mutate(
-    hcw_all = ifelse(grepl("confirmed", finalepiclassification, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T), 1, 0),
+    hcw_all = ifelse(grepl("confirmed", finalepiclassification_new, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T), 1, 0),
     hcw_all_dead = ifelse(grepl("dead", finaloutcome, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T), 1, 0)
   ) %>%
   group_by(country) %>%
   summarise(
     country_iso = unique(country_iso3),
     datelastreport = format(max(as.Date(reporting_date), na.rm = T), "%Y %B %d"),
-    confirmed = length(grep("Confirmed", finalepiclassification, ignore.case = T)),
+    confirmed = length(grep("confirmed", finalepiclassification_new, ignore.case = T)),
     recovered = length(grep("recovered", finaloutcome, ignore.case = T)),
     dead = length(grep("Dead", finaloutcome, ignore.case = T)),
-    alive = length(grep("alive", finaloutcome, ignore.case = T)),
+    alive = length(grep("alive", finaloutcome_new, ignore.case = T)),
     hwc_confirmed = sum(hcw_all, na.rm = T),
-    hwc_dead = sum(hcw_all_dead, na.rm = T)
-  ) %>%
+    hwc_dead = sum(hcw_all_dead, na.rm = T)) %>%
   mutate(
-    CFR = round((dead / confirmed) * 100, digits = 2),
-    hcw_proportion = round((hwc_confirmed / (confirmed)) * 100, digits = 2),
-    hcw_cfr = round((hwc_dead / (hwc_confirmed)) * 100, digits = 2)
-  )
+    CFR = round((dead / confirmed) * 100, digits = 1),
+    hcw_proportion = round((hwc_confirmed / (confirmed)) * 100, digits = 1),
+    hcw_cfr = round((hwc_dead / (hwc_confirmed)) * 100, digits = 1),
+    recovered_perc = round(recovered/confirmed * 100, digits = 1)
+  ) 
+ 
 
 ## merge counts with population
 counts <- left_join(counts, population, by = "country_iso")
@@ -167,17 +165,90 @@ counts <- mutate(counts,
 
 ## add in important vars
 counts <- mutate(counts,
-                 ## calculate incidence per 10k
-                 incidence = confirmed / x2020 * 10000
-)
+                 ## calculate incidence per 100k
+                 incidence = round((confirmed / x2020) * 100000, digits = 1),
+                 deaths_inc = round((dead / x2020 )* 100000,digits = 1),
+                 attack_rate = round((confirmed/ x2020 )*100, digits = 1)
+) 
+
+table1 <- counts %>%
+  select(
+    "Country" = country,
+    "Cumul Cases"  = confirmed, 
+    "Cumul Deaths" = dead, 
+    "CFR(%)"       = CFR, 
+    "Cumul Recovered"      = recovered, 
+    "% Recovered"          = recovered_perc,
+    "Incidence per 100K " = incidence,
+    "Deaths per 100K" = deaths_inc,
+    "Attack rate" = attack_rate
+  ) 
+
+counts_overall <- df_analyse %>%
+  mutate(
+    hcw_all = ifelse(grepl("confirmed", finalepiclassification_new, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T), 1, 0),
+    hcw_all_dead = ifelse(grepl("dead", finaloutcome, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T), 1, 0)
+  ) %>%
+  summarise(
+    datelastreport = format(max(as.Date(reporting_date), na.rm = T), "%Y %B %d"),
+    confirmed = length(grep("confirmed", finalepiclassification_new, ignore.case = T)),
+    recovered = length(grep("recovered", finaloutcome, ignore.case = T)),
+    dead = length(grep("Dead", finaloutcome, ignore.case = T)),
+    alive = length(grep("alive", finaloutcome_new, ignore.case = T)),
+    hwc_confirmed = sum(hcw_all, na.rm = T),
+    hwc_dead = sum(hcw_all_dead, na.rm = T)
+  ) %>%
+  mutate(
+    CFR = round((dead / confirmed) * 100, digits = 1),
+    hcw_proportion = round((hwc_confirmed / (confirmed)) * 100, digits = 1),
+    hcw_cfr = round((hwc_dead / (hwc_confirmed)) * 100, digits = 1),
+    recovered_perc = round((recovered/confirmed ) * 100, digits = 1)
+  ) 
+ 
+
+## total population
+totalpop<-sum(as.numeric(population$x2020), na.rm = T) *1000
+
+## add in important vars
+tabel2 <- mutate(counts_overall,
+                 country = "Total",
+                 ## calculate incidence per 100k
+                 incidence = round((confirmed / totalpop) * 100000,digits = 1),
+                 deaths_inc = round((dead / totalpop) * 100000,digits = 1),
+                 attack_rate = round((confirmed/ totalpop) *100, digits = 1)
+) %>%
+  select(
+     "Country" = country,
+    "Cumul Cases"  = confirmed, 
+    "Cumul Deaths" = dead, 
+    "CFR(%)"       = CFR, 
+    "Cumul Recovered"      = recovered, 
+    "% Recovered"          = recovered_perc,
+    "Incidence per 100K " = incidence,
+    "Deaths per 100K" = deaths_inc,
+    "Attack rate" = attack_rate
+  ) 
+
+
+tabel1_plot<-rbind(table1,tabel2)
+
+flextable(tabel1_plot) %>% bold(i=max(nrow(tabel1_plot)),j=c(1:9), bold = T, part = "body") %>% set_table_properties(width = 1, layout = "autofit") %>% set_caption(paste0("Table 1: Summary of countries in the WHO Africa Region with reported laboratory-confirmed COVID-19 cases and deaths",format(min(df_analyse$reporting_date),"%d %B %Y"), " - ",format(max(df_analyse$reporting_date), "%d %B %Y")))
+
+## south africa specific first 100
+SA_100<-df_analyse %>% filter(country=="South Africa") %>% arrange(as.Date(reporting_date)) %>% mutate(cumulative=as.numeric(cumsum(numcases)))
+SA_100_date<- as.Date(SA_100$reporting_date)[SA_100$cumulative==100]
+
+#days for countries to report 100 cases after SA had reported 100 
+first_100<-df_analyse %>% filter(country!="South Africa") %>% group_by(country) %>% arrange(as.Date(reporting_date)) %>% group_by(country) %>%
+  mutate(cumulative=as.numeric(cumsum(numcases))) %>% filter(cumulative<=100) %>% group_by(country) %>%
+  summarise(daysto100=max(reporting_date, na.rm = T)-SA_100_date)
+
 
 ```
 
-##  Plots
 
-```{r echo=FALSE}
-
-gg1<-df_analyse %>% dplyr::group_by(reporting_date) %>% dplyr::summarise(confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T))) %>%
+```{r echo=F, message=F, warning=F, fig.cap=paste0("Annexe 1: Epi curve for WHO african region (47 countries) ",format(min(df_analyse$reporting_date), "%d %B %Y")," - ",format(max(df_analyse$reporting_date), "%d %B %Y"), " n= ", counts_overall$confirmed)} 
+gg1<-df_analyse %>% dplyr::group_by(reporting_date) %>% dplyr::summarise(confirmed=length(grep("Confirmed",finalepiclassification_new,ignore.case = T))) %>%
   mutate(sevendayavg_overall = slider::slide_dbl(confirmed,
                                                  ~mean(.x, na.rm = TRUE),
                                                  .before = 7, ## number of previous days count to include
@@ -187,22 +258,71 @@ gg1<-df_analyse %>% dplyr::group_by(reporting_date) %>% dplyr::summarise(confirm
   geom_line(aes(x = as.Date(reporting_date), y = round(sevendayavg_overall), colour="#ff3300"), size=1) +
   scale_x_date(date_breaks = "1 week", date_labels = "%b %d") + pub_theme4 +
   labs(x="Date",y="Absolute number of confirmed cases") + scale_color_discrete(name = "7 day rolling average", labels = c(""))
+gg1
+```
 
 
-gg2<- df_analyse %>% dplyr::group_by(country,reporting_date) %>% filter(reporting_date>=SA_100_date & country!="South Africa") %>%
-  dplyr::summarise(confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T))) %>%
-  dplyr::group_by(country, reporting_date) %>%
-  mutate(days_SA_100=reporting_date-SA_100_date)  %>%
-  ggplot(aes(x=days_SA_100 ,y=confirmed, colour=country)) +
-  geom_line(aes(colour=country), size=1)
+```{r echo=F, message=F, warning=F, fig.cap="Annexe 2: Days taken for the other 46 countries in the WHO African region to report 100 cases since South Africa reported 100 cases"} 
+
+gg2<- first_100 %>% ggplot(aes(x=reorder(country ,-daysto100))) + 
+  geom_bar(aes(y=daysto100, fill= mycolors2[c(1)]), stat="identity", show.legend = F)  + 
+  pub_theme4 +  
+  coord_flip() + 
+  theme(axis.text.x = element_text(angle = 0)) +
+   labs(y="Days", x= "Country") + scale_fill_manual(values=mycolors2[c(3)])
+gg2
+```
 
 
-gg3<-counts ggplot(aes(
+```{r echo=F, message=F, warning=F, fig.cap="Annexe 3: Distribution of cases (blue bars) and deaths (red bars) in countries, with separate axes"} 
+# 
+# counts_long<- counts %>% tidyr::pivot_longer(c(dead,confirmed), names_to= "dead/cases") 
+# gg3<- counts_long %>% ggplot(aes(factor(`country`,levels=`country`[`dead/cases`=="confirmed"][order(value[`dead/cases`=="confirmed"])]), value, fill=`dead/cases`, group=`dead/cases`)) + geom_bar(aes(fill=as.factor(`dead/cases`)),stat="identity", show.legend = T) + 
+#   coord_flip() + scale_fill_manual(values = mycolors2[c(3,1)]) + labs(y="Count", x= "Country") + pub_theme4
 
-g6<-ncd_type_long %>% ggplot(aes(factor(`co-morbidity`,levels=`co-morbidity`[`dead/alive`=="dead"][order(value[`dead/alive`=="dead"])]), value, fill=`dead/alive`, group=`dead/alive`)) + geom_bar(aes(fill=as.factor(`dead/alive`)),stat="identity", show.legend = T) +
-  pub_theme4 + theme(axis.text.x=element_text(angle=0)) + scale_fill_manual(values = mycolors2[c(3,1)]) +
-  coord_flip() + labs(y="Number of cases", x= "Condition", fill="Outcome") +   geom_text(data=cfr_labels,aes(x=`co-morbidity`,y=1400,label=paste0("CFR= ",round(CFR, digits = 1), "%"),fontface= 2),
-                                                                                         inherit.aes=FALSE, size=8,angle=0,hjust=1)
+coeff<-10
+gg4<- counts %>% ggplot(aes(x=reorder(country ,-confirmed))) + 
+  geom_bar(aes(y=confirmed, fill= mycolors2[c(1)]), stat="identity", show.legend = T)  + 
+  geom_bar(aes(y=dead*coeff, fill= mycolors2[c(3)]), stat="identity", show.legend = T, width = 0.5) +
+  scale_y_continuous(sec.axis = sec_axis(~ . / coeff, name = "No. of Deaths")) + 
+  labs(y="No. of Cases", x= "Country") + pub_theme4 + theme(axis.text.x = element_text(angle = 0)) + coord_flip() + scale_fill_manual(name=" ", values = c( mycolors2[c(1)],  mycolors2[c(3)]),labels=c("Cases","Deaths"))
 
+gg4
 
 ```
+
+
+```{r echo=F, message=F, warning=F, fig.cap="Annexe 4: Deaths per 100,000 population vs cases per 100,000 population, country names are shown if deaths per 100,000 population is > 2"} 
+## find highest point for y axis annotation 
+topy <- ceiling(
+  max(counts$attack_rate, na.rm = TRUE)
+)
+
+## remove country names if mortality rate is <2 (so not overcrowding plot)
+counts_plotting <- counts %>% 
+  mutate(country = case_when(
+    deaths_inc < 2 ~ "", 
+    TRUE ~ country))
+  
+
+ggplot(data = counts_plotting, 
+       aes(x = deaths_inc, y = incidence, label = country)) + 
+  geom_point(col = "#c83349", size = 2) +
+  geom_text_repel(col = "blue", size = 6, 
+                  segment.alpha = 0.6, segment.size = 0.5) +
+  annotate("rect", 
+           xmin = 0, xmax = 0.5, 
+           ymin = 20, ymax = topy, 
+           alpha = 0.2) + 
+  annotate("text", 
+           size = 4,
+           x = 0.6, y = topy - 10, 
+           label = "High incidence / low mortality countries") + 
+  ## make y and x axes meet at the origin (x = 0, y = 0) 
+  scale_y_continuous(expand = c(0,0), limits = c(0, NA)) + 
+  pub_theme4 + 
+  xlab("Deaths per 100,000 pop") +
+  ylab("Cases per 100,000 pop")
+
+```
+
