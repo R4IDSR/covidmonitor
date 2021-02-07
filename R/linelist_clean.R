@@ -8,7 +8,6 @@
 #'
 #' @importFrom rio import export
 #' @importFrom dplyr mutate across contains if_else filter select
-#' @importFrom stringi stri_trans_general
 #' @author Alice Carr, Alex Spina
 #' @export
 
@@ -296,7 +295,7 @@ clean_linelist <- function(inputfile,
   inconclusive <- na.omit(dplyr::select(clean_dict,inconclusive))
 
   # regex cleaning
-  big_data_clean<-dplyr::mutate(big_data_clean, across(c("lab_result"), stringi::stri_trans_general, "Latin-ASCII"))
+  big_data_clean<-dplyr::mutate(big_data_clean, across(c("lab_result"), iconv, from = "UTF-8", to = "ASCII//TRANSLIT"))
   big_data_clean<- dplyr::mutate(big_data_clean, across(c(lab_result), gsub, pattern = "[0-9?]", replacement = NA, ignore.case = T, perl = T))
 
   # positive
