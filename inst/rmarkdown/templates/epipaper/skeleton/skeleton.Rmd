@@ -1,0 +1,208 @@
+---
+title: "epipaperanalysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Several packages are required for different aspects of  analysis with *R*. 
+# You will need to install these before starting. 
+# These packages can be quite large and may take a while to download in the
+# field. If you have access to a USB key with these packages, it makes sense to
+# copy and paste the packages into your computer's R package library 
+# (run the command .libPaths() to see the folder path). 
+# For help installing packages, please visit https://r4epis.netlify.com/welcome
+
+
+# set options for rmarkdown 
+knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
+                      message = FALSE, # hide all messages in output
+                      warning = FALSE, # hide all warnings in output
+                      collapse = TRUE, # combine all source/output to single block
+                      fig.width = 20,  # define figure width
+                      fig.height = 8,  # define figure height
+                      dpi = 300,       # define figure definitions
+                      cache = F)       # run all code chunks (even if repeated)
+
+
+## Installing required packages for this template
+required_packages <- c(
+                       "knitr",          # create output docs
+                       "here",           # find your files
+                       "rio",            # read in data
+                       "lubridate",      # work with dates
+                       "tsibble",        # for working with dates as time series
+                       "slider",         # for calculating rolling averages
+                       "dplyr",          # clean/shape data
+                       "janitor",        # clean/shape data
+                       "tidyr",          # clean/shape data
+                       "matchmaker",     # dictionary-based standardization of variables
+                       "ggplot2",        # create plots
+                       "ggrepel",        # space out overlapping data in ggplot2
+                       "flextable",      # for nice tables
+                       "grid",           # add flextables to ggplots 
+                       "patchwork",      # combine ggplots 
+                       "RColorBrewer",   # for defining colour schemes
+                       "purrr",          # for running regressions over multiple countries 
+                       "broom"           # for cleaning up regression outputs
+                       )
+  
+for (pkg in required_packages) {
+  # install packages if not already present
+  if (!pkg %in% rownames(installed.packages())) {
+    install.packages(pkg)
+  }
+  # load packages to this current session 
+  library(pkg, character.only = TRUE)
+}
+
+
+
+## define a theme for ggplot (so all look similar) 
+epi_theme <- theme_classic() + 
+    theme(
+      text = element_text(size = 18, family = "Arial"), 
+      ## rotate x axis labels
+      axis.text.x  = element_text(angle = 45, vjust = 0.5),
+      axis.title   = element_text(color = "black", face = "bold"), 
+      legend.title = element_blank(), 
+      legend.text  = element_text(color = "black"), 
+      legend.position  = "bottom",
+      legend.direction = "horizontal",
+      ## colour and size the grid lines in the plot 
+      # panel.grid.minor = element_line(colour = "grey90", size = 0.5), 
+      panel.grid.major = element_line(colour = "grey90")
+      )
+pub_theme4 <- theme(
+  text = element_text(family = "Arial"),
+  axis.text.x = element_text(size = 24, angle = 45, color = "black", vjust = 0.5, hjust = 0.5),
+  axis.text.y = element_text(size = 24, color = "black"),
+  axis.title.y = element_text(size = 26, face = "bold", color = "black"),
+  axis.title.x = element_text(size = 26, face = "bold", color = "black"),
+  panel.grid.major.y = element_line(size = .5, color = "gray", linetype = "solid"),
+  panel.grid.major.x = element_blank(),
+  panel.grid.minor.x = element_blank(),
+  # panel.grid.minor=element_blank(),
+  panel.background = element_rect(fill = "white", colour = "grey50"),
+  axis.line = element_line(colour = "black"), legend.position = "bottom",
+  legend.direction = "horizontal",
+  legend.key.size = unit(0.4, "cm"),
+  legend.title = element_text(size = 26, face = "bold.italic"),
+  legend.text = element_text(size = 24, face = "italic"),
+  # panel.border=element_rect(colour="black", fill=NA, size=1),
+  plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "in")
+)
+
+# make own colour palettes
+nb.cols <- 12
+mycolors <- colorRampPalette(brewer.pal(8, "PRGn"))(nb.cols)
+mycolors2 <- colorRampPalette(brewer.pal(8, "Set1"))(nb.cols)
+
+options(scipen=999)
+```
+
+```{r , echo=FALSE, message=FALSE, warning=FALSE}
+
+df <- clean_variable_names(rio::import(here("inst", "extdata", "ConfirmedCases.csv"), na.strings=c("","NA")))
+
+df_analyse <- mutate(df, across(contains("date"), as.Date))
+
+population <- rio::import("https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/EXCEL_FILES/1_Population/WPP2019_POP_F01_1_TOTAL_POPULATION_BOTH_SEXES.xlsx")
+## clean up the population data
+## fix names
+colnames(population) <- population[12, ]
+population <- clean_names(population)
+
+## drop extras at top
+population <- population[-c(1:12), ]
+
+## back up original
+og_population <- population
+
+## create iso code variable
+population$country_iso <- countrycode::countrycode(population$country_code,
+                                                   origin = "un",
+                                                   destination = "iso3c"
+)
+
+## only keep countries listed in counts
+population <- population %>%
+  filter(country_iso %in% df$country_iso3) %>%
+  select(region_subregion_country_or_area, country_iso, x2020)
+
+```
+
+## Tables
+
+```{r echo=F}
+
+counts <- df_analyse %>%
+  mutate(
+    hcw_all = ifelse(grepl("confirmed", finalepiclassification, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T), 1, 0),
+    hcw_all_dead = ifelse(grepl("dead", finaloutcome, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T), 1, 0)
+  ) %>%
+  group_by(country) %>%
+  summarise(
+    country_iso = unique(country_iso3),
+    datelastreport = format(max(as.Date(reporting_date), na.rm = T), "%Y %B %d"),
+    confirmed = length(grep("Confirmed", finalepiclassification, ignore.case = T)),
+    recovered = length(grep("recovered", finaloutcome, ignore.case = T)),
+    dead = length(grep("Dead", finaloutcome, ignore.case = T)),
+    alive = length(grep("alive", finaloutcome, ignore.case = T)),
+    hwc_confirmed = sum(hcw_all, na.rm = T),
+    hwc_dead = sum(hcw_all_dead, na.rm = T)
+  ) %>%
+  mutate(
+    CFR = round((dead / confirmed) * 100, digits = 2),
+    hcw_proportion = round((hwc_confirmed / (confirmed)) * 100, digits = 2),
+    hcw_cfr = round((hwc_dead / (hwc_confirmed)) * 100, digits = 2)
+  )
+
+## merge counts with population
+counts <- left_join(counts, population, by = "country_iso")
+
+## correct population as is in thousands
+counts <- mutate(counts,
+                 x2020 = as.numeric(x2020) * 1000
+)
+
+## add in important vars
+counts <- mutate(counts,
+                 ## calculate incidence per 10k
+                 incidence = confirmed / x2020 * 10000
+)
+
+```
+
+##  Plots
+
+```{r echo=FALSE}
+
+gg1<-df_analyse %>% dplyr::group_by(reporting_date) %>% dplyr::summarise(confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T))) %>%
+  mutate(sevendayavg_overall = slider::slide_dbl(confirmed,
+                                                 ~mean(.x, na.rm = TRUE),
+                                                 .before = 7, ## number of previous days count to include
+                                                 .complete = TRUE) ## only include days which have the full 7 previous days available
+  ) %>% ggplot(aes(x=as.Date(reporting_date) ,y=confirmed)) +
+  geom_bar(stat = "identity", size=1, fill="#3288bd") +
+  geom_line(aes(x = as.Date(reporting_date), y = round(sevendayavg_overall), colour="#ff3300"), size=1) +
+  scale_x_date(date_breaks = "1 week", date_labels = "%b %d") + pub_theme4 +
+  labs(x="Date",y="Absolute number of confirmed cases") + scale_color_discrete(name = "7 day rolling average", labels = c(""))
+
+
+gg2<- df_analyse %>% dplyr::group_by(country,reporting_date) %>% filter(reporting_date>=SA_100_date & country!="South Africa") %>%
+  dplyr::summarise(confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T))) %>%
+  dplyr::group_by(country, reporting_date) %>%
+  mutate(days_SA_100=reporting_date-SA_100_date)  %>%
+  ggplot(aes(x=days_SA_100 ,y=confirmed, colour=country)) +
+  geom_line(aes(colour=country), size=1)
+
+
+gg3<-counts ggplot(aes(
+
+g6<-ncd_type_long %>% ggplot(aes(factor(`co-morbidity`,levels=`co-morbidity`[`dead/alive`=="dead"][order(value[`dead/alive`=="dead"])]), value, fill=`dead/alive`, group=`dead/alive`)) + geom_bar(aes(fill=as.factor(`dead/alive`)),stat="identity", show.legend = T) +
+  pub_theme4 + theme(axis.text.x=element_text(angle=0)) + scale_fill_manual(values = mycolors2[c(3,1)]) +
+  coord_flip() + labs(y="Number of cases", x= "Condition", fill="Outcome") +   geom_text(data=cfr_labels,aes(x=`co-morbidity`,y=1400,label=paste0("CFR= ",round(CFR, digits = 1), "%"),fontface= 2),
+                                                                                         inherit.aes=FALSE, size=8,angle=0,hjust=1)
+
+
+```
