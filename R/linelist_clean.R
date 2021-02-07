@@ -25,31 +25,38 @@ clean_linelist <- function(inputfile,
                            outputname = "Cleaned_linelist_") {
 
   #import cleaning dictionary
-  clean_dict<-rio::import(#system.file(
-    here::here("inst", "Cleaning_dict_alice.xlsx"),
-    #package = "covidmonitor"),
+  clean_dict <- rio::import(
+    system.file(
+    "inst", "Cleaning_dict_alice.xlsx",
+    package = "covidmonitor"),
+    which = "all_clean",
     readxl = FALSE)
-  no<-na.omit(dplyr::select(clean_dict,no))
-  yes<-na.omit(dplyr::select(clean_dict,yes))
+
+  ## select the columns for recoding yes and no
+  no <- na.omit(dplyr::select(clean_dict, no))
+  yes <- na.omit(dplyr::select(clean_dict, yes))
 
   #capital city
-  capital_dict<-rio::import(#system.file(
-    here::here("inst", "Cleaning_dict_alice.xlsx"),
-    #package = "covidmonitor"),
-    which=2,readxl = FALSE)
+  capital_dict <- rio::import(
+    system.file(
+      "inst", "Cleaning_dict_alice.xlsx",
+      package = "covidmonitor"),
+    which = "capital",
+    readxl = FALSE)
 
   #somelinelists are only of confimred cases so are missing the outcome variable but this should be made confirmed and lab result positive for these countries
-  confirmed_dict<-rio::import(#system.file(
-    here::here("inst", "Cleaning_dict_alice.xlsx"),
-    #package = "covidmonitor"),
-    which=3,readxl = FALSE)
+  confirmed_dict <- rio::import(
+    system.file(
+      "inst", "Cleaning_dict_alice.xlsx",
+      package = "covidmonitor"),
+    which = "confirmed",
+    readxl = FALSE)
 
   # import has for some reason lost the values in some columns (ageonsetdays), due to the read_excel that is used.
   # as the output from the merge file is a .xlsx we can specify readxl =FALSE so the read.xlsx function will be used on the import instead
   # the read.xlsx functions requires the dependancy openxlsx
-  big_data <- rio::import(#system.file(
-    here::here("inst", inputfile),
-    #package = "covidmonitor"),
+  big_data <- rio::import(
+    inputfile,
     readxl = FALSE)
 
   # initialised new df for cleaning
@@ -432,15 +439,13 @@ clean_linelist <- function(inputfile,
   big_data_clean$report_date <- dplyr::if_else(is.na(big_data_clean$report_date), big_data_clean$lab_resdate, big_data_clean$report_date)
   big_data_clean$report_date <- dplyr::if_else(big_data_clean$report_date < as.Date("2020-01-01") | big_data_clean$report_date > as.Date(Sys.Date()), as.Date(NA), big_data_clean$report_date)
 
-  rio::export(big_data_clean,
-              # system.file(
-              file=here::here(outputdirectory, paste0(outputname, Sys.Date(), ".xlsx"))
-              # package = "covidmonitor"),
-  )
+  # define path to output to
+  filename <- paste0(outputdirectory,"/", outputname, Sys.Date(), ".xlsx")
 
+  # write file
+  rio::export(big_data, file = filename)
+
+  # return merged dataset
+  big_data
 
 }
-
-
-
-########################################################################################################################
