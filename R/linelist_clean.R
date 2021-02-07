@@ -1,10 +1,14 @@
 #' Clean merged COVID-19 linelists from WHO AFRO
 #'
-#' @param inputfile path to file created by merge_linelist function
+#' @param inputfile path to file created by [covidmonitor::merge_linelist()] function
 #'
 #' @param outputdirectory path to folder where merged file is to be saved
 #'
 #' @param outputname character string to name merged file
+#'
+#' @param cleaningdict path to dictionary file containing cleaning rule definitions.
+#' Default is a predefined within the package. For details of how to use your own
+#' file see [README](https://github.com/R4IDSR/covidmonitor)
 #'
 #' @importFrom rio import export
 #' @importFrom dplyr mutate across contains if_else filter select
@@ -22,13 +26,13 @@
 
 clean_linelist <- function(inputfile,
                            outputdirectory = tempdir(),
-                           outputname = "Cleaned_linelist_") {
+                           outputname = "Cleaned_linelist_",
+                           cleaningdict = system.file("inst", "cleaning_dictionary.xlsx", package = "covidmonitor")
+                           ) {
 
   #import cleaning dictionary
   clean_dict <- rio::import(
-    system.file(
-    "inst", "cleaning_dictionary.xlsx",
-    package = "covidmonitor"),
+    cleaningdict,
     which = "all_clean",
     readxl = FALSE)
 
@@ -38,17 +42,13 @@ clean_linelist <- function(inputfile,
 
   #capital city
   capital_dict <- rio::import(
-    system.file(
-      "inst", "cleaning_dictionary.xlsx",
-      package = "covidmonitor"),
+    cleaningdict,
     which = "capital",
     readxl = FALSE)
 
   #somelinelists are only of confimred cases so are missing the outcome variable but this should be made confirmed and lab result positive for these countries
   confirmed_dict <- rio::import(
-    system.file(
-      "inst", "cleaning_dictionary.xlsx",
-      package = "covidmonitor"),
+    cleaningdict,
     which = "confirmed",
     readxl = FALSE)
 

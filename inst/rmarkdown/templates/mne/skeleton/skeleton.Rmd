@@ -135,7 +135,7 @@ mne_data <- merge_kpi(data_folder,
 mne_dict <- rio::import(
     system.file("extdata", "mne_dictionary.xlsx",
                 package = "covidmonitor"),
-    which = 1
+    which = "var_defs"
   )
 
 ```

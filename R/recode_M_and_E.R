@@ -15,7 +15,7 @@ recode_kpi <- function(inputfile) {
   recode_dict <- rio::import(
     system.file("extdata", "mne_dictionary.xlsx",
                 package = "covidmonitor"),
-    which = 3
+    which = "odk_dict"
   )
 
 
