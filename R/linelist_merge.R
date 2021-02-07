@@ -1,4 +1,4 @@
-#' Merge linelists from AFRO
+#' Merge COVID-19 linelists from WHO AFRO
 #'
 #' @param inputdirectory path to folder containing datasets
 #'

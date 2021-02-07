@@ -1,6 +1,6 @@
-#' Merge linelists from AFRO
+#' Clean merged COVID-19 linelists from WHO AFRO
 #'
-#' @param inputdirectory path to folder containing datasets
+#' @param inputfile path to file created by merge_linelist function
 #'
 #' @param outputdirectory path to folder where merged file is to be saved
 #'
@@ -16,12 +16,12 @@
 # library(dplyr) # still have this here because across not supported in standard dplyr ?
 
 # the inputs that i have been using
-# inputdirectory <- "Merged_linelist_2021-01-17.xlsx"
+# inputfile <- "Merged_linelist_2021-01-17.xlsx"
 # outputdirectory <- "inst/"
 # outputname <- "Merged_linelist_"
 
 
-clean_linelist <- function(inputdirectory,
+clean_linelist <- function(inputfile,
                            outputdirectory = tempdir(),
                            outputname = "Cleaned_linelist_") {
 
@@ -49,7 +49,7 @@ clean_linelist <- function(inputdirectory,
   # as the output from the merge file is a .xlsx we can specify readxl =FALSE so the read.xlsx function will be used on the import instead
   # the read.xlsx functions requires the dependancy openxlsx
   big_data <- rio::import(#system.file(
-    here::here("inst", inputdirectory),
+    here::here("inst", inputfile),
     #package = "covidmonitor"),
     readxl = FALSE)
 
