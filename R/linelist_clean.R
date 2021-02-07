@@ -27,7 +27,7 @@
 clean_linelist <- function(inputfile,
                            outputdirectory = tempdir(),
                            outputname = "Cleaned_linelist_",
-                           cleaningdict = system.file("inst", "cleaning_dictionary.xlsx", package = "covidmonitor")
+                           cleaningdict = system.file("extdata", "cleaning_dictionary.xlsx", package = "covidmonitor")
                            ) {
 
   #import cleaning dictionary
@@ -388,7 +388,7 @@ clean_linelist <- function(inputfile,
   ), na.rm = T)
 
   big_data_comorbs$not_specified_comorb <- ifelse(big_data_comorbs$comcond_preexist1 == "yes" & is.na(big_data_comorbs$comcond_preexist) & big_data_comorbs$comcond_preexsist_yesno == 0, 1, NA)
-  big_data_comorbs$not_specified_comorb <- ifelse(big_data_comorbs$comcond_preexist1 == "yes" & is.na(big_data_comorbs$not_specified_comorb) & grepl(paste(na.omit(comorbs$`Not Specified`), collapse = "|"), big_data_comorbs$comcond_preexist, ignore.case = T), 1, big_data_comorbs$not_specified_comorb)
+  big_data_comorbs$not_specified_comorb <- ifelse(big_data_comorbs$comcond_preexist1 == "yes" & is.na(big_data_comorbs$not_specified_comorb) & grepl(paste(na.omit(clean_dict$`Not Specified`), collapse = "|"), big_data_comorbs$comcond_preexist, ignore.case = T), 1, big_data_comorbs$not_specified_comorb)
 
   big_data_comorbs$comcond_preexsist_yesno <- NULL # removing this placeholder variable to redo below including not specified
 
@@ -443,9 +443,9 @@ clean_linelist <- function(inputfile,
   filename <- paste0(outputdirectory,"/", outputname, Sys.Date(), ".xlsx")
 
   # write file
-  rio::export(big_data, file = filename)
+  rio::export(big_data_clean, file = filename)
 
   # return merged dataset
-  big_data
+  big_data_clean
 
 }
