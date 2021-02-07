@@ -70,10 +70,10 @@ for (pkg in required_packages) {
 ## define a theme for ggplot (so all look similar) 
 pub_theme4 <- theme(
   text = element_text(family = "Arial"),
-  axis.text.x = element_text(size = 20, angle = 45, color = "black", vjust = 0.5, hjust = 0.5),
-  axis.text.y = element_text(size = 20, color = "black"),
-  axis.title.y = element_text(size = 24, face = "bold", color = "black"),
-  axis.title.x = element_text(size = 24, face = "bold", color = "black"),
+  axis.text.x = element_text(size = 28, angle = 45, color = "black", vjust = 0.5, hjust = 0.5),
+  axis.text.y = element_text(size = 28, color = "black"),
+  axis.title.y = element_text(size = 30, face = "bold", color = "black"),
+  axis.title.x = element_text(size = 30, face = "bold", color = "black"),
   panel.grid.major.y = element_line(size = .5, color = "gray", linetype = "solid"),
   panel.grid.major.x = element_blank(),
   panel.grid.minor.x = element_blank(),
@@ -82,8 +82,8 @@ pub_theme4 <- theme(
   axis.line = element_line(colour = "black"), legend.position = "bottom",
   legend.direction = "horizontal",
   legend.key.size = unit(0.4, "cm"),
-  legend.title = element_text(size = 24, face = "bold.italic"),
-  legend.text = element_text(size = 24, face = "italic"),
+  legend.title = element_text(size = 28, face = "bold.italic"),
+  legend.text = element_text(size = 28, face = "italic"),
   # panel.border=element_rect(colour="black", fill=NA, size=1),
   plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "in")
 )
@@ -255,7 +255,7 @@ gg1<-df_analyse %>% dplyr::group_by(reporting_date) %>% dplyr::summarise(confirm
                                                  .complete = TRUE) ## only include days which have the full 7 previous days available
   ) %>% ggplot(aes(x=as.Date(reporting_date) ,y=confirmed)) +
   geom_bar(stat = "identity", size=1, fill="#3288bd") +
-  geom_line(aes(x = as.Date(reporting_date), y = round(sevendayavg_overall), colour="#ff3300"), size=1) +
+  geom_line(aes(x = as.Date(reporting_date), y = round(sevendayavg_overall), colour="#ff3300"), size=3) +
   scale_x_date(date_breaks = "1 week", date_labels = "%b %d") + pub_theme4 +
   labs(x="Date",y="Absolute number of confirmed cases") + scale_color_discrete(name = "7 day rolling average", labels = c(""))
 gg1
@@ -295,7 +295,7 @@ gg4
 ```{r echo=F, message=F, warning=F, fig.cap="Annexe 4: Deaths per 100,000 population vs cases per 100,000 population, country names are shown if deaths per 100,000 population is > 2"} 
 ## find highest point for y axis annotation 
 topy <- ceiling(
-  max(counts$attack_rate, na.rm = TRUE)
+  max(counts$incidence, na.rm = TRUE)
 )
 
 ## remove country names if mortality rate is <2 (so not overcrowding plot)
@@ -308,15 +308,15 @@ counts_plotting <- counts %>%
 ggplot(data = counts_plotting, 
        aes(x = deaths_inc, y = incidence, label = country)) + 
   geom_point(col = "#c83349", size = 2) +
-  geom_text_repel(col = "blue", size = 6, 
+  geom_text_repel(col = "blue", size = 10, 
                   segment.alpha = 0.6, segment.size = 0.5) +
   annotate("rect", 
-           xmin = 0, xmax = 0.5, 
-           ymin = 20, ymax = topy, 
+           xmin = 0, xmax = 10, 
+           ymin = 500, ymax = topy, 
            alpha = 0.2) + 
   annotate("text", 
-           size = 4,
-           x = 0.6, y = topy - 10, 
+           size = 8,
+           x = 10, y = topy - 300, 
            label = "High incidence / low mortality countries") + 
   ## make y and x axes meet at the origin (x = 0, y = 0) 
   scale_y_continuous(expand = c(0,0), limits = c(0, NA)) + 
