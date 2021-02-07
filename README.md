@@ -55,8 +55,8 @@ TODO: add details about where data should be and how should be named etc
 
 ### Dictionaries
 
-TODO: add details about how to structure dictionaries (if not using
-defaults)
+TODO: add details about how to structure dictionaries (table with diff
+tabs defined and how to set up if not using defaults)
 
 ### Templates
 
@@ -74,8 +74,8 @@ TODO: add details about where data should be and how should be named etc
 
 ### Dictionaries
 
-TODO: add details about how to structure dictionaries (if not using
-defaults)
+TODO: add details about how to structure dictionaries (table with diff
+tabs and how to set up if not using defaults)
 
 ### Templates
 
