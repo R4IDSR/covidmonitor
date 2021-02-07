@@ -38,7 +38,7 @@ merge_kpi <- function(inputdirectory,
                       wide = TRUE,
                       clean = TRUE,
                       variabledict = system.file("extdata", "mne_dictionary.xlsx", package = "covidmonitor"),
-                      cleaningdict = system.file("inst", "cleaning_dictionary.xlsx", package = "covidmonitor")
+                      cleaningdict = system.file("extdata", "cleaning_dictionary.xlsx", package = "covidmonitor")
                       ) {
 
   # Read in file list. Creat output directory.
@@ -48,7 +48,7 @@ merge_kpi <- function(inputdirectory,
 
   # drop files we dont want
   # those that have not been assigned a name yet and the combined.csv
-  files <- files[-grep("---.|Combined.csv|CombinedKPIDataFile.xlsx|!", files)]
+  files <- files[-grep("---.|Combined.|CombinedKPIDataFile|!", files)]
 
 
   if (length(files) == 0) {
