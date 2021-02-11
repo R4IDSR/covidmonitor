@@ -103,13 +103,13 @@ the file path within the function call (see help files for function
 argument details). **N.b** sheet and variable names should not be
 changed (otherwise the function will break).
 
-TODO: add details about how to structure dictionaries (table with diff
-tabs defined) - create an excel file and put it in the extdata folder
-(one sheet per dictionary)
-
 **Table**: Required variables by sheet in the linelist dictionary.
 
+<img src="man/figures/README-linelist_dict-1.png" width="100%" />
+
 **Table**: Required variables by sheet in the cleaning dictionary
+
+<img src="man/figures/README-cleaning_dict-1.png" width="100%" />
 
 ### Templates
 
@@ -119,13 +119,58 @@ TODO: add details about how to use templates
 
 ### Folder structure
 
-TODO: add details about where data should be and how should be named etc
+Functions and templates are set up to run based on files contained in
+the COVID-19 Outbreak Documentation &gt; KPI sharepoint folder. This
+folder contains all the latest M&E files submitted organised in to
+folders by the month, and sub-folders for the day within that month it
+was submitted.
+
+### File naming and format
+
+File names must start with the three letter ISO code for the country
+followed by “.KPI.”, afterwhich the rest of the file name can be
+anything. All files must be in .xlsx format.
+
+For example: A file submitted by Ghana on the 1st of September 2020
+would be in the following folder:  
+“COVID-19- Outbreak Documentation/KPI/**2020-09**/**09-01**”  
+And would be called:  
+“**GHA.KPI.** New weekly reporting template.xlsx”
 
 ### Dictionaries
 
-TODO: add details about how to structure dictionaries (table with diff
-tabs and how to set up if not using defaults)
+In order for the functions to work, several data dictionaries are
+required. The first is called
+[mne\_dictionary.xlsx](https://github.com/R4IDSR/covidmonitor/raw/master/inst/extdata/mne_dictionary.xlsx)
+and contains information for defining and naming variables, as well as
+defining which sheet to read in from the various country linelists. The
+second is called
+[cleaning\_dictionary.xlsx](https://github.com/R4IDSR/covidmonitor/raw/master/inst/extdata/cleaning_dictionary.xlsx)
+and contains information for cleaning and recoding country names (see
+country sheet of the cleaning\_dict table above). Details of the
+required sheet names and contents for mne\_dict are in the table below.
+
+The functions use default to using dictionaries which are pre-defined
+within the package, however you can also edit these dictionaries by
+downloading them from GitHub (links provided above), and then specifying
+the file path within the function call (see help files for function
+argument details). **N.b** sheet and variable names should not be
+changed (otherwise the function will break).
+
+**Table**: Required variables by sheet in the cleaning dictionary
+
+<img src="man/figures/README-mne_dict-1.png" width="100%" />
 
 ### Templates
 
-TODO: add details about how to use templates
+There is one template available for monitoring and evaluation data. This
+will produce a word document output will summary tables and figures of
+the indicators for a single country. Figures are coloured using a
+traffic light system based on the defined cut-offs for the different
+indicators.
+
+Select the template entitled “WHO weekly M & E Covid-19 report”. Save
+this in the KPI folder, change the country and week of interest in the
+“define\_current\_week” code chunk, and then knit. In order to access
+templates, follow the steps described in the [epichecks
+readme](https://github.com/R4IDSR/epichecks#who-afro-monthly-bulletin).
