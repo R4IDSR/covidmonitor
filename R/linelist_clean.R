@@ -296,7 +296,7 @@ clean_linelist <- function(inputfile,
   big_data_clean$report_classif_confirmed <- NULL
   big_data_clean$report_classif_nac <- NULL
 
-  big_data_clean$report_classif <- ifelse(!grepl("suspected|probabale|confirmed|not a case", big_data_clean$report_classif, ignore.case = T), NA, big_data_clean$report_classif)
+  big_data_clean$report_classif <- ifelse(!grepl("suspected|probable|confirmed|not a case", big_data_clean$report_classif, ignore.case = T), NA, big_data_clean$report_classif)
 
 
   # labresult
@@ -325,6 +325,7 @@ clean_linelist <- function(inputfile,
   big_data_clean$lab_result_neg <- NULL
   big_data_clean$lab_result_incon <- NULL
 
+  big_data_clean$lab_result <- ifelse(!grepl("positive|negative|inconclusive", big_data_clean$lab_result, ignore.case = T), NA, big_data_clean$lab_result)
 
   # using lab result to confirm case
   # create report_classif_final variable for extra cleaning
@@ -423,7 +424,7 @@ clean_linelist <- function(inputfile,
   # change comborbs if to character for merge
   big_data_comorbs$id <- as.character(big_data_comorbs$id)
   big_data_clean <- merge(big_data_clean, big_data_comorbs, by = "id")
-
+  big_data_clean$id<-NULL #remove merger id
 
 
   ### capital city
@@ -434,6 +435,7 @@ clean_linelist <- function(inputfile,
   big_data_clean$capital <- country$capital[match(big_data_clean$country_iso, country$country_iso)]
   # partial match readmin1 variable to identify if patient is in capital city
   big_data_clean$capital_final <- mapply(function(x, y) grepl(x, y, ignore.case = T), big_data_clean$capital, big_data_clean$patinfo_resadmin1)
+  big_data_clean$capital_final <- ifelse(is.na(big_data_clean$patinfo_resadmin1),NA,big_data_clean$capital_final)
   big_data_clean$capital <- NULL # drop variable that was used for matching
 
 
@@ -441,6 +443,10 @@ clean_linelist <- function(inputfile,
   # re-run this line to replace any report dates that were dropped because entered incorrectly we can use the labdate as a surrogate at the end of this clean,
   big_data_clean$report_date <- dplyr::if_else(is.na(big_data_clean$report_date), big_data_clean$lab_resdate, big_data_clean$report_date)
   #big_data_clean$report_date <- dplyr::if_else(big_data_clean$report_date < as.Date("2020-01-01") | big_data_clean$report_date > as.Date(Sys.Date()), as.Date(NA), big_data_clean$report_date)
+
+  big_data_clean<-mutate(big_data_clean,across(c(hcw,capital_final),
+                                               ~case_when(.==TRUE~"yes",
+                                                          .==FALSE~"no")))
 
   # define path to output to
   filename <- paste0(outputdirectory,"/", outputname, Sys.Date(), ".xlsx")
@@ -470,6 +476,7 @@ clean_linelist <- function(inputfile,
                                           report_classif_final,
                                           comcond_preexist1,
                                           comcond_preexist1_final))
+
   ## in readme it is described that some countires ie. Chad and Senegal (TCD) has date issue due to the excel file used.
   ## If the fix isnt done prior to merging uncommenting these lines would do a rough fix
   ## see readme for details
@@ -480,7 +487,7 @@ clean_linelist <- function(inputfile,
 
 
   #filter for only confimered cases in this file
-  confirmedcases<-filter(confirmedcases,report_classif_final=="confirmed"|report_classif_final=="suspected")
+  confirmedcases<-filter(confirmedcases,report_classif_final=="confirmed" | report_classif_final=="probable")
 
   #filter for not missing report date
   #confirmedcases<-filter(confirmedcases,!is.na(report_date))
@@ -506,13 +513,7 @@ clean_linelist <- function(inputfile,
                                           "preexsiting_comorbidity_final"=comcond_preexist1_final
                                           ))
 
-  confirmedcases<-mutate(confirmedcases,across(healthcare_worker,
-                         ~case_when(.==TRUE~"yes",
-                                    .==FALSE~"no")))
 
-  confirmedcases<-mutate(confirmedcases,across(finalepiclassification,
-                         ~case_when(.=="suspected"~"probable",
-                                    .!="suspected" ~ . )))
 
   # write ConfirmedCases file
   rio::export(confirmedcases, file = paste0("ConfirmedCases_",Sys.Date(),".csv"))
