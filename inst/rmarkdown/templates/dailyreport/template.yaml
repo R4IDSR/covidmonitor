@@ -1,0 +1,4 @@
+name: WHO daily Covid-19 report summary
+description: >
+  An automated outbreak summaryreport template for Covid-19 producing html output 
+create_dir: false

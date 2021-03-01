@@ -470,9 +470,10 @@ clean_linelist <- function(inputfile,
                                           report_classif_final,
                                           comcond_preexist1,
                                           comcond_preexist1_final))
-  # #in readme it is described that some countires ie. Chad and Senegal (TCD) has date issue due to the excel file used.
-  # #In this file
-  # #see readme for details
+  ## in readme it is described that some countires ie. Chad and Senegal (TCD) has date issue due to the excel file used.
+  ## If the fix isnt done prior to merging uncommenting these lines would do a rough fix
+  ## see readme for details
+
   # confirmedcases<-dplyr::mutate(confirmedcases, across(c("report_date", "patcourse_datedeath","patcourse_datedischarge"), ~ ifelse(country_iso=="TCD" |country_iso=="SEN",  as.Date(.,origin= "1970-01-01") + lubridate::years(4), as.Date(.,origin= "1970-01-01"))))
   # confirmedcases<-dplyr::mutate(confirmedcases, across(c("report_date","patcourse_datedeath","patcourse_datedischarge"), as.Date, origin= "1970-01-01"))
   # confirmedcases <- dplyr::mutate(confirmedcases, across(report_date, ~if_else(. < as.Date("2020-01-01") | . > as.Date(Sys.Date()), as.Date(NA), .)))
@@ -480,6 +481,7 @@ clean_linelist <- function(inputfile,
 
   #filter for only confimered cases in this file
   confirmedcases<-filter(confirmedcases,report_classif_final=="confirmed"|report_classif_final=="suspected")
+
   #filter for not missing report date
   #confirmedcases<-filter(confirmedcases,!is.na(report_date))
 
@@ -512,7 +514,7 @@ clean_linelist <- function(inputfile,
                          ~case_when(.=="suspected"~"probable",
                                     .!="suspected" ~ . )))
 
-  # write ConfirmedCases file file
+  # write ConfirmedCases file
   rio::export(confirmedcases, file = paste("ConfirmedCases_",Sys.Date(),".csv"))
 
 }
