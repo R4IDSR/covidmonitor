@@ -19,10 +19,10 @@
 # library(dplyr) # still have this here because across not supported in standard dplyr ?
 
 # the inputs that i have been using
-# inputfile <- "Merged_linelist_2021-01-17.xlsx"
+inputfile <- "inst/Merged_linelist_2021-01-17.xlsx"
 # outputdirectory <- "inst/"
 # outputname <- "Merged_linelist_"
-
+cleaningdict <- "inst/extdata/cleaning_dictionary.xlsx"
 
 clean_linelist <- function(inputfile,
                            outputdirectory = tempdir(),
@@ -67,8 +67,9 @@ clean_linelist <- function(inputfile,
 
   ## report date ##
   #use dplyr::if_else for date handleing
+  #replace report date with lab result date if missing
   big_data_clean$report_date <- dplyr::if_else(is.na(big_data_clean$report_date), big_data_clean$lab_resdate, big_data_clean$report_date)
-  big_data_clean$report_date <- dplyr::if_else(big_data_clean$report_date < as.Date("2020-01-01") | big_data_clean$report_date > as.Date(Sys.Date()), as.Date(NA), big_data_clean$report_date)
+  #big_data_clean$report_date <- dplyr::if_else(big_data_clean$report_date < as.Date("2020-01-01") | big_data_clean$report_date > as.Date(Sys.Date()), as.Date(NA), big_data_clean$report_date)
 
 
   ## patinfo_ageonset##
@@ -250,10 +251,12 @@ clean_linelist <- function(inputfile,
 
   # some cases with a date of death but not "dead" in their status column?
   # Date of death handling.
-  # some countries used a date of outcome column, this needs cleaning if patient is not dead then empy the date of death column and put date in the discharge column
+  # some countries used a date of outcome column - nonspecific to dead or discharged, this needs cleaning if patient is not dead then empy the date of death column and put date in the discharge column
   big_data_clean$patcourse_datedischarge <- ifelse(big_data_clean$patcourse_status != "dead", big_data_clean$patcourse_datedeath, big_data_clean$patcourse_datedischarge)
-  big_data_clean$patcourse_datedeath <- ifelse(big_data_clean$patcourse_status != "dead", NA, big_data_clean$patcourse_datedeath)
-  big_data_clean$patcourse_datedischarge <- ifelse(big_data_clean$patcourse_status == "dead", NA, big_data_clean$patcourse_datedischarge)
+  big_data_clean$patcourse_datedeath <- ifelse(big_data_clean$patcourse_status != "dead",as.Date(NA), big_data_clean$patcourse_datedeath)
+  big_data_clean$patcourse_datedischarge <- ifelse(big_data_clean$patcourse_status == "dead", as.Date(NA), big_data_clean$patcourse_datedischarge)
+  # date format changes due to the additions of NAs at this point in these two columns so change to readble date classes
+  big_data_clean<-dplyr::mutate(big_data_clean, across(contains(c("datedeath","datedischarge")), as.Date,origin="1970-01-01"))
 
 
   ## report classif ##
@@ -324,17 +327,17 @@ clean_linelist <- function(inputfile,
 
 
   # using lab result to confirm case
-  # create report_classif_alice variable to work off until we decide how this is to be cleaned
-  #new addition to report classif variable by looking for confirmed instances in the lab result variable - cleaning is above
-  big_data_clean$report_classif_alice <- big_data_clean$report_classif
-  big_data_clean$report_classif_alice <- ifelse(big_data_clean$lab_result == "positive" & !is.na(big_data_clean$lab_result), "confirmed", big_data_clean$report_classif)
+  # create report_classif_final variable for extra cleaning
+  #new variable created by looking for confirmed instances in the lab result variable - cleaning is above
+  big_data_clean$report_classif_final <- big_data_clean$report_classif
+  big_data_clean$report_classif_final <- ifelse(big_data_clean$lab_result == "positive" & !is.na(big_data_clean$lab_result), "confirmed", big_data_clean$report_classif)
 
 
   # load in dictionary for linelists that are only the positves / confirmed cases as pre specified
   linelist_pos <- confirmed_dict
   linelist_pos <- filter(linelist_pos, !is.na(linelist_pos$labresult))
 
-  big_data_clean$report_classif_alice <- ifelse(is.na(big_data_clean$report_classif_alice), linelist_pos$classification[match(big_data_clean$country_iso, linelist_pos$country_iso)], big_data_clean$report_classif_alice)
+  big_data_clean$report_classif_final <- ifelse(is.na(big_data_clean$report_classif_final), linelist_pos$classification[match(big_data_clean$country_iso, linelist_pos$country_iso)], big_data_clean$report_classif_final)
   big_data_clean$lab_result <- ifelse(is.na(big_data_clean$lab_result), linelist_pos$labresult[match(big_data_clean$country_iso, linelist_pos$country_iso)], big_data_clean$lab_result)
 
 
@@ -401,15 +404,15 @@ clean_linelist <- function(inputfile,
   # if no ncd were picked up then the yes/no variable is changed to no
   # if ncd was picked up then yes/no variable is changed to yes
   # if missing yes/no variable it is changed to not given
-  # i have added these as a separate variable _alice for comparison
-  big_data_comorbs$comcond_preexist1_alice <- ifelse(big_data_comorbs$comcond_preexsist_count == 0 & is.na(big_data_comorbs$comcond_preexist) & is.na(big_data_comorbs$comcond_preexist1), "not given", NA)
+  #  comcond_preexsist_final is created as a comparison variable for above criteria
+  big_data_comorbs$comcond_preexist1_final <- ifelse(big_data_comorbs$comcond_preexsist_count == 0 & is.na(big_data_comorbs$comcond_preexist) & is.na(big_data_comorbs$comcond_preexist1), "not given", NA)
 
-  big_data_comorbs$comcond_preexist1_alice <- ifelse(big_data_comorbs$comcond_preexsist_count > 0 & is.na(big_data_comorbs$comcond_preexist1_alice), "yes", big_data_comorbs$comcond_preexist1_alice)
-  big_data_comorbs$comcond_preexist1_alice <- ifelse(big_data_comorbs$comcond_preexsist_count == 0 & is.na(big_data_comorbs$comcond_preexist1_alice) & big_data_comorbs$comcond_preexist1 == "no", "no", big_data_comorbs$comcond_preexist1_alice)
+  big_data_comorbs$comcond_preexist1_final <- ifelse(big_data_comorbs$comcond_preexsist_count > 0 & is.na(big_data_comorbs$comcond_preexist1_final), "yes", big_data_comorbs$comcond_preexist1_final)
+  big_data_comorbs$comcond_preexist1_final <- ifelse(big_data_comorbs$comcond_preexsist_count == 0 & is.na(big_data_comorbs$comcond_preexist1_final) & big_data_comorbs$comcond_preexist1 == "no", "no", big_data_comorbs$comcond_preexist1_final)
   # if no comorbs identified from string matching and if they had in column yes change this to a no because it is not a comorb
-  big_data_comorbs$comcond_preexist1_alice <- ifelse(big_data_comorbs$comcond_preexsist_count == 0 & is.na(big_data_comorbs$comcond_preexist1_alice) & big_data_comorbs$comcond_preexist1 == "yes", "no", big_data_comorbs$comcond_preexist1_alice)
+  big_data_comorbs$comcond_preexist1_final <- ifelse(big_data_comorbs$comcond_preexsist_count == 0 & is.na(big_data_comorbs$comcond_preexist1_final) & big_data_comorbs$comcond_preexist1 == "yes", "no", big_data_comorbs$comcond_preexist1_final)
   # for those with missing yes/no byt entered in specify variable but it is not a comorbidity as identified from the previous string mtching
-  big_data_comorbs$comcond_preexist1_alice <- ifelse(big_data_comorbs$comcond_preexsist_count == 0 & is.na(big_data_comorbs$comcond_preexist1_alice) & is.na(big_data_comorbs$comcond_preexist1) & !is.na(big_data_comorbs$comcond_preexist), "no", big_data_comorbs$comcond_preexist1_alice)
+  big_data_comorbs$comcond_preexist1_final <- ifelse(big_data_comorbs$comcond_preexsist_count == 0 & is.na(big_data_comorbs$comcond_preexist1_final) & is.na(big_data_comorbs$comcond_preexist1) & !is.na(big_data_comorbs$comcond_preexist), "no", big_data_comorbs$comcond_preexist1_final)
 
 
   ###
@@ -435,9 +438,9 @@ clean_linelist <- function(inputfile,
 
 
 
-  # re-run this line to replace any report dates that were dropped because entered incorrectly we can use the labdate as a surrogate at the end of this clean, again doing a final drop of incorrect dates
+  # re-run this line to replace any report dates that were dropped because entered incorrectly we can use the labdate as a surrogate at the end of this clean,
   big_data_clean$report_date <- dplyr::if_else(is.na(big_data_clean$report_date), big_data_clean$lab_resdate, big_data_clean$report_date)
-  big_data_clean$report_date <- dplyr::if_else(big_data_clean$report_date < as.Date("2020-01-01") | big_data_clean$report_date > as.Date(Sys.Date()), as.Date(NA), big_data_clean$report_date)
+  #big_data_clean$report_date <- dplyr::if_else(big_data_clean$report_date < as.Date("2020-01-01") | big_data_clean$report_date > as.Date(Sys.Date()), as.Date(NA), big_data_clean$report_date)
 
   # define path to output to
   filename <- paste0(outputdirectory,"/", outputname, Sys.Date(), ".xlsx")
@@ -447,5 +450,69 @@ clean_linelist <- function(inputfile,
 
   # return merged dataset
   big_data_clean
+
+  confirmedcases<-select(big_data_clean,c(patinfo_id,
+                                          report_date,
+                                          country_full,
+                                          country_iso,
+                                          patinfo_ageonset,
+                                          patinfo_sex,
+                                          patinfo_resadmin1,
+                                          patinfo_resadmin2,
+                                          report_classif,
+                                          lab_result,
+                                          patcourse_status,
+                                          patcourse_datedeath,
+                                          patcourse_datedischarge,
+                                          pat_symptomatic,
+                                          hcw,
+                                          patcourse_status_recovered,
+                                          report_classif_final,
+                                          comcond_preexist1,
+                                          comcond_preexist1_final))
+  # #in readme it is described that some countires ie. Chad and Senegal (TCD) has date issue due to the excel file used.
+  # #In this file
+  # #see readme for details
+  # confirmedcases<-dplyr::mutate(confirmedcases, across(c("report_date", "patcourse_datedeath","patcourse_datedischarge"), ~ ifelse(country_iso=="TCD" |country_iso=="SEN",  as.Date(.,origin= "1970-01-01") + lubridate::years(4), as.Date(.,origin= "1970-01-01"))))
+  # confirmedcases<-dplyr::mutate(confirmedcases, across(c("report_date","patcourse_datedeath","patcourse_datedischarge"), as.Date, origin= "1970-01-01"))
+  # confirmedcases <- dplyr::mutate(confirmedcases, across(report_date, ~if_else(. < as.Date("2020-01-01") | . > as.Date(Sys.Date()), as.Date(NA), .)))
+
+
+  #filter for only confimered cases in this file
+  confirmedcases<-filter(confirmedcases,report_classif_final=="confirmed"|report_classif_final=="suspected")
+  #filter for not missing report date
+  #confirmedcases<-filter(confirmedcases,!is.na(report_date))
+
+  #change variables/variable names to be in line with previous ConfirmedCases files for template scripts that have been previously developed based on ConfirmedCases files
+  confirmedcases<-rename(confirmedcases,c("id"=patinfo_id,
+                                          "reporting_date"=report_date,
+                                          "country"=country_full,
+                                          "country_iso3"=country_iso,
+                                          "age"=patinfo_ageonset,
+                                          "sex"= patinfo_sex,
+                                          "province"=patinfo_resadmin1,
+                                          "district"=patinfo_resadmin2,
+                                          "epi_classification"=report_classif,
+                                          "outcome"=patcourse_status,
+                                          "date_of_death" = patcourse_datedeath,
+                                          "date_of_discharge"=patcourse_datedischarge,
+                                          "symptomatic"=pat_symptomatic,
+                                          "healthcare_worker"=hcw,
+                                          "finaloutcome"=patcourse_status_recovered,
+                                          "finalepiclassification"=report_classif_final,
+                                          "preexsiting_comorbidity"=comcond_preexist1,
+                                          "preexsiting_comorbidity_final"=comcond_preexist1_final
+                                          ))
+
+  confirmedcases<-mutate(confirmedcases,across(healthcare_worker,
+                         ~case_when(.==TRUE~"yes",
+                                    .==FALSE~"no")))
+
+  confirmedcases<-mutate(confirmedcases,across(finalepiclassification,
+                         ~case_when(.=="suspected"~"probable",
+                                    .!="suspected" ~ . )))
+
+  # write ConfirmedCases file file
+  rio::export(confirmedcases, file = paste("ConfirmedCases_",Sys.Date(),".csv"))
 
 }
