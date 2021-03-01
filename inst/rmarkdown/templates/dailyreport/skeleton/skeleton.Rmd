@@ -6,10 +6,10 @@ output:
   word_document: 
   fig_caption: yes
 params:
-  dateofreport: !r as.Date("2020-11-03") #Sys.Date()
-  inputdirectory: !r system.file("extdata", "ConfirmedCases.csv", package = "covidmonitor")
+  dateofreport: !r as.Date("2020-11-03") #Insert date of report
+  inputdirectory: !r system.file("extdata", "ConfirmedCases_ 2021-03-01.csv", package = "covidmonitor") #changefilename as required
     
-author: "Alice Carr"
+author: "Alice Carr" 
 header-includes:
    - \usepackage{floatrow}
    - \floatsetup[figure]{capposition=top}
@@ -65,7 +65,8 @@ required_packages <- c(
                        "flextable",
                        "rmarkdown",
                        "linelist",
-                       "utils")
+                       "utils",
+                       "tidyverse")
   
 for (pkg in required_packages) {
   # install packages if not already present
@@ -109,7 +110,8 @@ mycolors <- colorRampPalette(brewer.pal(8, "Dark2"))(nb.cols)
 ```{r , echo=FALSE, message=FALSE, warning=FALSE}
 
 #Confirmed cases
-df<- rio::import(inputdirectory) #defined at top of this document 
+
+df<- rio::import(params$inputdirectory) %>% #defined at top of this document 
   as_tibble() %>% 
   clean_variable_names() 
 
@@ -131,15 +133,18 @@ population <- population[-c(1:12), ]
 og_population <- population
 
 ## create iso code variable
-population$country_iso <- countrycode::countrycode(population$country_code,
+population$country_iso3 <- countrycode::countrycode(population$country_code,
                                                    origin = "un",
                                                    destination = "iso3c"
 )
 
 ## only keep countries listed in counts
 population <- population %>%
-  filter(country_iso %in% df$country_iso3) %>%
-  select(region_subregion_country_or_area, country_iso, x2020)
+  filter(country_iso3 %in% df$country_iso3) %>%
+  select(region_subregion_country_or_area, country_iso3, x2020) %>%
+  rename("country"=region_subregion_country_or_area,
+         "population"=x2020) %>%
+  mutate(across(population,as.numeric)) %>% mutate(population=population*1000)
 
   
 #initialise empty dataframe for all countires 
@@ -159,7 +164,7 @@ epiday<- with(df, as.numeric(difftime(params$dateofreport-days(1), min(reporting
 #summary for all countries including number of days since last report from day of report (todays date using Sys.Date())
 all<- df %>% mutate(hcw=ifelse(grepl("Confirmed",finalepiclassification, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T),1,0)) %>%
   group_by(country) %>% filter(reporting_date!=params$dateofreport) %>%
-  summarise(dayslastreport=as.numeric(difftime(Sys.Date(), max(reporting_date))),
+  summarise(dayslastreport=as.numeric(difftime(params$dateofreport, max(reporting_date))),
             datelastreport=format(max(reporting_date), "%d %B %Y"),
             confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T)),
             probable=length(grep("Probable",finalepiclassification, ignore.case = T)),
@@ -230,8 +235,37 @@ past28days<-df %>% mutate(hcw=ifelse(grepl("Confirmed", finalepiclassification, 
 past28days<-merge(past28days, countries, all=T)
 
 
+#highlight if South Africa or Kenya not in merged file but create dummy lines in df for then
+SA_KEN<-c("South Africa","Kenya") %in% df$country
+if(SA_KEN[1]=="FALSE" & SA_KEN[2]=="FALSE"){
+  text<-"South Africa and Kenya are not in this merged input file"
+  all<- all %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  day7<- day7 %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  prevday7 <- prevday7 %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  day14 <- day14 %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  past24h <- past24h %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  past28days<- past28days %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+}else if(SA_KEN[1]=="TRUE" & SA_KEN[2]=="FALSE"){
+  text<-"Kenya is not in this merged input file"
+  all<- all %>%  add_row(country = "Kenya")
+  day7<- day7 %>% add_row(country = "Kenya")
+  prevday7 <- prevday7 %>% add_row(country = "Kenya")
+  day14 <- day14 %>% add_row(country = "Kenya")
+  past24h <- past24h %>% add_row(country = "Kenya")
+  past28days<- past28days %>% add_row(country = "Kenya")
+}else if(SA_KEN[1]=="FALSE" & SA_KEN[2]=="TRUE"){
+  text<-"South Africa is not in this merged input file"
+  all<- all %>% add_row(country = "South Africa") 
+  day7<- day7 %>% add_row(country = "South Africa") 
+  prevday7 <- prevday7 %>% add_row(country = "South Africa") 
+  day14 <- day14 %>% add_row(country = "South Africa") 
+  past24h <- past24h %>% add_row(country = "South Africa")
+  past28days<- past28days %>% add_row(country = "South Africa") 
+}else if(SA_KEN[1]=="FALSE" & SA_KEN[2]=="TRUE"){
+  text<-"South Africa and Kenya are in this merged input file"
+}
 ```
-
+- Note: `r paste(text)`
 ```{r echo=F}
 #for generation of 24 hour highlights
 
@@ -247,13 +281,7 @@ if(nrow(past24h[!is.na(past24h$confirmed_24h),])==0){
   KEN<-"no cases reported"
   SA_perc<-"no cases reported"
   KEN_perc<-"no cases reported"
-} else {
-   SA<- past24h$confirmed_24h[past24h$country=="South Africa"]
-   SA_perc<-paste0(round((past24h$confirmed_24h[past24h$country=="South Africa"])/sum(past24h$confirmed_24h, na.rm = T)*100, digits=1), "%")
-   KEN<-past24h$confirmed_24h[past24h$country=="Kenya"]
-   KEN_perc<-paste0(round((past24h$confirmed_24h[past24h$country=="Kenya"])/sum(past24h$confirmed_24h, na.rm = T)*100, digits=1), "%") 
-   text<-paste(sum(past24h$confirmed_24h, na.rm = T), "new confirmed cases reported by",length(unique(past24h$country[!is.na(past24h$confirmed_24h)])), "countries")
-}
+} 
 
 if(is.na(past24h$confirmed_24h[past24h$country=="South Africa"])){
   SA<-"did not report"
@@ -468,7 +496,7 @@ dayreport$value<-paste(dayreport$country, dayreport$dayslastreport , sep=" ")
 ```{r echo=F}
 #merge dataframe with cumlative numbers with population dataframe to calculate population rates and attack rate and cases per million
 
-all_pop<-merge(all, population)
+all_pop<-merge(all, population, by="country")
 all_pop$attackrate<-round(((all_pop$confirmed + all_pop$probable)/all_pop$population)*1000000)
 all_pop$all_deathpermil<-round(((all_pop$dead)/all_pop$population)*1000000)
 all_pop$all_casepermill<-round(((all_pop$confirmed)/all_pop$population)*1000000)
@@ -568,21 +596,38 @@ top5_deathpermil$value<- paste(top5_attack$country, top5_attack$attackrate, sep=
 top5_rr <- all_pop  %>% top_n(n = 5, recoveryrate) %>% filter(recoveryrate>0) %>% arrange(desc(recoveryrate)) %>% 
     select(c("country", "recoveryrate")) 
 
+if(nrow(top5_rr)==0){
+  top5_rr <- all_pop  %>% top_n(n = -5, recoveryrate) %>% select(c("country", "recoveryrate")) 
+  top5_rr$recoveryrate<- paste0("(", format(unlist(top5_rr$recoveryrate)),"%)")
+  top5_rr$value<- paste(top5_rr$country, top5_rr$recoveryrate, sep= " ")
+  text<-"recovery rate unreliable- few countries in dataset reporting recovered"
+}else{
 top5_rr$recoveryrate<- paste0("(", format(unlist(top5_rr$recoveryrate)),"%)")
 top5_rr$value<- paste(top5_rr$country, top5_rr$recoveryrate, sep= " ")
+text<-"countries in dataset reporting recovered"
+}
 
 
 bottom5_rr <- all_pop  %>% top_n(n = -5, recoveryrate) %>% filter(recoveryrate>0) %>% 
     select(c("country", "recoveryrate")) 
 
+if(nrow(bottom5_rr)==0){
+  bottom5_rr <- all_pop  %>% top_n(n = -5, recoveryrate) %>% select(c("country", "recoveryrate")) 
+  bottom5_rr$recoveryrate<- paste0("(", format(unlist(bottom5_rr$recoveryrate)),"%)")
+  bottom5_rr$value<- paste(bottom5_rr$country, bottom5_rr$recoveryrate, sep= " ")
+  text<-"recovery rate unreliable- few countries in dataset reporting recovered"
+}else{
 bottom5_rr$recoveryrate<- paste0("(", format(unlist(bottom5_rr$recoveryrate)),"%)")
 bottom5_rr$value<- paste(bottom5_rr$country, bottom5_rr$recoveryrate, sep= " ")
+text<-"countries in dataset reporting recovered"
+}
 
 ```
--  `r paste(top5_rr$value, collapse=", ")` are the five countries with the highest recovery rate. 
+-  `r paste(top5_rr$value, collapse=", ")` are the five countries with the highest recovery rate.
 
 - The following five countries have recorded the lowest recovery rate: `r paste(bottom5_rr$value, collapse=", ")`. This may be due to possible under reporting of recoveries.
 
+- Note: `r paste(text)`
 
 ## Heathcare worker infections 
 
@@ -725,7 +770,7 @@ func <- function(z) if (is.numeric(z)) sum(z, na.rm = T) else ''
 sumrow <- as.data.frame(lapply(table1, func))
 
 sumrow[1]<-paste0("Total (n= ",nrow(table1),")")
-sumrow[3]<-paste(round(mean(all$hcwrate), digit=2),"%")
+sumrow[3]<-paste(round(mean(all$hcwrate,na.rm = T), digit=2),"%")
 
 table_results<-rbind(table1,sumrow) 
   
@@ -749,7 +794,7 @@ func <- function(z) if (is.numeric(z)) sum(z, na.rm=T) else ''
 sumrow <- as.data.frame(lapply(summary_bycountry, func))
 
 sumrow[1]<-paste0("Total (n= ",nrow(summary_bycountry),")")
-sumrow[7]<-paste(round(mean(all$CFR), digit=2),"%")
+sumrow[7]<-paste(round(mean(all$CFR, na.rm = T), digit=2),"%")
 
 table_results<-rbind(summary_bycountry,sumrow)
 

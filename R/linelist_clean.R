@@ -515,6 +515,6 @@ clean_linelist <- function(inputfile,
                                     .!="suspected" ~ . )))
 
   # write ConfirmedCases file
-  rio::export(confirmedcases, file = paste("ConfirmedCases_",Sys.Date(),".csv"))
+  rio::export(confirmedcases, file = paste0("ConfirmedCases_",Sys.Date(),".csv"))
 
 }
