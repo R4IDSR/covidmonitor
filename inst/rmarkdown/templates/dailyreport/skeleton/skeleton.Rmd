@@ -1,5 +1,5 @@
 ---
-title: "WHO AFRO Daily Report"
+title: "WHO daily Covid-19 report summary"
 output:
   
   html_document: 
