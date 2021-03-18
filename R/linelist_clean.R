@@ -15,14 +15,6 @@
 #' @author Alice Carr, Alex Spina
 #' @export
 
-## TODO: delete this
-# library(dplyr) # still have this here because across not supported in standard dplyr ?
-
-# the inputs that i have been using
-inputfile <- "inst/Merged_linelist_2021-01-17.xlsx"
-# outputdirectory <- "inst/"
-# outputname <- "Merged_linelist_"
-cleaningdict <- "inst/extdata/cleaning_dictionary.xlsx"
 
 clean_linelist <- function(inputfile,
                            outputdirectory = tempdir(),
