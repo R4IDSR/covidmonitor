@@ -76,13 +76,15 @@ All files must be stored as an excel file (i.e. **xlsx**), those stored
 as binary workbooks (**xlsb**) will throw an error and must be re-saved
 as **xlsx**.
 
-**n.b** some countries (e.g. TCD) have saved their date variables in
-excel using the 1904 date system (i.e. date origin is 1st January 1904
-rather than 1900), this needs to be restructured manually in the excel
-file otherwise the *R* function will produce dates that are off by four
-years. See
+**n.b** some countries (e.g. TCD and SEN) have saved their date
+variables in excel using the 1904 date system (i.e. date origin is 1st
+January 1904 rather than 1900), this needs to be restructured manually
+in the excel file otherwise the *R* function will produce dates that are
+off by four years. See
 [here](https://docs.microsoft.com/en-us/office/troubleshoot/excel/1900-and-1904-date-system)
-for details.
+for details. **Lines 484-486** can be uncommented in
+**linelist\_clean.R** raw code to crudely deal with this issue but it is
+recommened to fix the issue manually and not use this quick fix.
 
 ### Dictionaries
 
@@ -103,6 +105,26 @@ the file path within the function call (see help files for function
 argument details). **N.b** sheet and variable names should not be
 changed (otherwise the function will break).
 
+### Outputs
+
+2 **csv** files are outputed from the *R* functions which merge and
+clean country linelists (functions called *merge\_linelist* and
+*clean\_linelist*, respectively).
+
+The first output file beginning with **Cleaned\_linelist\_** (default
+outputname) contains 43 variables and all cases as merged and cleaned by
+the *R* function
+
+The second output begining with **ConfirmedCases\_** contains 19
+variables with only cases that had a confirmed or probable final epi
+classification. Variable names have been simplifed. This file or files
+with the same format and variable names as this output should be used in
+country linelist template (see **Templates** section).
+
+Descriptions, content, cleaning and other information about the
+variables in the output **csv** files are summarised in the tables
+below:
+
 **Table**: Required variables by sheet in the linelist dictionary.
 
 <img src="man/figures/README-linelist_dict-1.png" width="100%" />
@@ -111,9 +133,43 @@ changed (otherwise the function will break).
 
 <img src="man/figures/README-cleaning_dict-1.png" width="100%" />
 
+**Table**: Description of variables in output files.
+
+<img src="man/figures/README-output_vars-1.png" width="100%" />
+
 ### Templates
 
-TODO: add details about how to use templates
+There are two templates available for country linelist data. These are
+similar, however one produces an HTML document (with more content) and
+the other produces a powerpoint document.
+
+#### HTML document
+
+The first will produce a HTML output in the style of a report with
+summary text, tables and figures of the daily situation of Covid-19 in
+the WHO African region. The dataset beginning with **ConfirmedCases\_**
+outputed from the merging and cleaning function should be used as the
+data input in this template.
+
+Select the template entitled “WHO daily Covid-19 report summary (HTML)”.
+Change the date of report (dateofreport) and directory and filename of
+the **ConfirmedCases\_** file you wish to use (inputdirectory) in the
+parameters section (params:) at the top in the yaml header and then
+knit. In order to access templates, follow the steps described in the
+[epichecks
+readme](https://github.com/R4IDSR/epichecks#who-afro-monthly-bulletin).
+
+#### Powerpoint document
+
+This is similar to the HTML document above, but has more tailored
+content. To access it, select the template entitled “WHO daily Covid-19
+report summary (PPT)”.
+
+You will need to update the reference\_doc location in the YAML header
+as well as the current week you are trying to run in the
+“define\_current\_week” code chunk. In order to access templates, follow
+the steps described in the [epichecks
+readme](https://github.com/R4IDSR/epichecks#who-afro-monthly-bulletin).
 
 ## Monitoring & Evaluation
 
