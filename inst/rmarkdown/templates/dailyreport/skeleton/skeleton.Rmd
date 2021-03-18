@@ -1,0 +1,807 @@
+---
+title: "WHO daily Covid-19 report summary"
+output:
+  
+  html_document: 
+  word_document: 
+  fig_caption: yes
+params:
+  dateofreport: !r as.Date("2020-11-03") #Insert date of report
+  inputdirectory: !r system.file("extdata", "ConfirmedCases_ 2021-03-01.csv", package = "covidmonitor") #changefilename as required
+    
+author: "Alice Carr" 
+header-includes:
+   - \usepackage{floatrow}
+   - \floatsetup[figure]{capposition=top}
+---
+```{r setup, include=FALSE, cache=FALSE}
+
+# Several packages are required for different aspects of  analysis with *R*. 
+# You will need to install these before starting. 
+# These packages can be quite large and may take a while to download in the
+# field. If you have access to a USB key with these packages, it makes sense to
+# copy and paste the packages into your computer's R package library 
+# (run the command .libPaths() to see the folder path). 
+# For help installing packages, please visit https://r4epis.netlify.com/welcome
+
+
+# set options for rmarkdown 
+knitr::opts_chunk$set(echo = FALSE,    # hide all code chunks in output
+                      message = FALSE, # hide all messages in output
+                      warning = FALSE, # hide all warnings in output
+                      collapse = TRUE, # combine all source/output to single block
+                      fig.width = 20,  # define figure width
+                      fig.height = 8,  # define figure height
+                      dpi = 300,       # define figure definitions
+                      cache = F)       # run all code chunks (even if repeated)
+
+
+## Installing required packages for this template
+required_packages <- c(
+                       "knitr",          # create output docs
+                       "here",           # find your files
+                       "rio",            # read in data
+                       "lubridate",      # work with dates
+                       "tsibble",        # for working with dates as time series
+                       "slider",         # for calculating rolling averages
+                       "dplyr",          # clean/shape data
+                       "janitor",        # clean/shape data
+                       "tidyr",          # clean/shape data
+                       "matchmaker",     # dictionary-based standardization of variables
+                       "ggplot2",        # create plots
+                       "ggrepel",        # space out overlapping data in ggplot2
+                       "flextable",      # for nice tables
+                       "grid",           # add flextables to ggplots 
+                       "patchwork",      # combine ggplots 
+                       "RColorBrewer",   # for defining colour schemes
+                       "purrr",          # for running regressions over multiple countries 
+                       "broom",           # for cleaning up regression outputs
+                       "knitr",
+                       "kableExtra",
+                       "gtable",
+                       "scales",
+                       "reshape2",
+                       "magrittr",
+                       "flextable",
+                       "rmarkdown",
+                       "linelist",
+                       "utils",
+                       "tidyverse")
+  
+for (pkg in required_packages) {
+  # install packages if not already present
+  if (!pkg %in% rownames(installed.packages())) {
+    install.packages(pkg)
+  }
+  # load packages to this current session 
+  library(pkg, character.only = TRUE)
+}
+
+
+Sys.setenv("RSTUDIO_PANDOC" = "PATH TO PANDOC BIN")
+options(scipen=999)
+
+#Initialise Theme for plotting
+pub_theme4 <- theme(text=element_text(family="Arial"),
+                    axis.text.x=element_text(size=14,angle=45,color="black", vjust=0.5, hjust=0.5),
+                    axis.text.y=element_text(size=14,color="black"),
+                    axis.title.y=element_text(size=14,face="bold",color="black"),
+                    axis.title.x=element_text(size=14,face="bold",color="black"),
+                    panel.grid.major.y=element_line(size=.5, color="gray", linetype = "solid"),
+                    panel.grid.major.x = element_blank(),
+                    panel.grid.minor.x = element_blank(),
+                    #panel.grid.minor=element_blank(),
+                    panel.background=element_rect(fill = "white", colour = "grey50"),
+                    axis.line=element_line(colour="black"),legend.position = "bottom",
+                    legend.direction = "horizontal",
+                    legend.key.size= unit(0.4, "cm"),
+                    legend.title = element_text(size=14,face="italic"),
+                    legend.text=element_text(size=14, face="italic"),
+                    #panel.border=element_rect(colour="black", fill=NA, size=1),
+                    plot.margin=unit(c(0.2,0.2,0.2,0.2),"in"))
+
+#make own colour palettes
+nb.cols <- 12
+mycolors <- colorRampPalette(brewer.pal(8, "Dark2"))(nb.cols)
+
+
+```
+
+```{r , echo=FALSE, message=FALSE, warning=FALSE}
+
+#Confirmed cases
+
+df<- rio::import(params$inputdirectory) %>% #defined at top of this document 
+  as_tibble() %>% 
+  clean_variable_names() 
+
+#df$country_full[df$country_full=="Cabo Verde"]<-"Cape Verde"
+
+#Population 
+#Please ensure country names in population file match to confirmed cases file
+## clean up the population data
+## fix names
+population <- rio::import("https://population.un.org/wpp/Download/Files/1_Indicators%20(Standard)/EXCEL_FILES/1_Population/WPP2019_POP_F01_1_TOTAL_POPULATION_BOTH_SEXES.xlsx")
+
+colnames(population) <- population[12, ]
+population <- clean_names(population)
+
+## drop extras at top
+population <- population[-c(1:12), ]
+
+## back up original
+og_population <- population
+
+## create iso code variable
+population$country_iso3 <- countrycode::countrycode(population$country_code,
+                                                   origin = "un",
+                                                   destination = "iso3c"
+)
+
+## only keep countries listed in counts
+population <- population %>%
+  filter(country_iso3 %in% df$country_iso3) %>%
+  select(region_subregion_country_or_area, country_iso3, x2020) %>%
+  rename("country"=region_subregion_country_or_area,
+         "population"=x2020) %>%
+  mutate(across(population,as.numeric)) %>% mutate(population=population*1000)
+
+  
+#initialise empty dataframe for all countires 
+countries<-df %>% select(country) %>%summarise(country=unique(country)) 
+
+#make reporting date appropriate class 
+#remove any incorrect dates
+df$reporting_date<-as.Date(df$reporting_date)
+df <- dplyr::mutate(df, across(reporting_date, ~if_else(. < as.Date("2020-01-01") | . > as.Date(Sys.Date()), as.Date(NA), .)))
+df<-filter(df,!is.na(reporting_date))
+
+#names(df)
+
+#number of days since first report
+epiday<- with(df, as.numeric(difftime(params$dateofreport-days(1), min(reporting_date))))
+
+#summary for all countries including number of days since last report from day of report (todays date using Sys.Date())
+all<- df %>% mutate(hcw=ifelse(grepl("Confirmed",finalepiclassification, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T),1,0)) %>%
+  group_by(country) %>% filter(reporting_date!=params$dateofreport) %>%
+  summarise(dayslastreport=as.numeric(difftime(params$dateofreport, max(reporting_date))),
+            datelastreport=format(max(reporting_date), "%d %B %Y"),
+            confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T)),
+            probable=length(grep("Probable",finalepiclassification, ignore.case = T)),
+            dead=length(grep("Dead",finaloutcome, ignore.case = T)),
+            recovered=length(grep("Recovered",finaloutcome, ignore.case = T)),
+            active=length(grep("Alive|Probable",finaloutcome, ignore.case = T)),
+            hwc_confirmed=sum(hcw, na.rm=T)) %>% 
+  mutate(CFR=round((dead/confirmed)*100, digits = 0),
+         recoveryrate=round((recovered/(confirmed+probable))*100, digits = 0),
+         hcwrate= round((hwc_confirmed/(confirmed))*100, digits = 0))
+
+
+# Window last 7 days of data for Average daily nb of cases 
+day7<-df %>% mutate(hcw=ifelse(grepl("Confirmed", finalepiclassification, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T),1,0)) %>%  filter(reporting_date >= (params$dateofreport - days(1)) - days(7)) %>% group_by(country) %>%
+  dplyr::summarise(confirmed_7d=length(grep("Confirmed",finalepiclassification,ignore.case = T)),
+                   probable_7d=length(grep("Probable",finalepiclassification, ignore.case = T)),
+                   dead_7d=length(grep("Dead",finaloutcome, ignore.case = T)),
+                   recovered_7d=length(grep("Recovered",finaloutcome, ignore.case = T)),
+                   active_7d=length(grep("Alive|Probable",finaloutcome, ignore.case = T)),
+                   hwc_confirmed_7d=sum(hcw, na.rm=T))
+
+day7<-merge(day7,countries, all=T)
+
+# Window for 7days ago until 7 days before that for Average daily nb of cases  
+prevday7<- df %>% mutate(hcw=ifelse(grepl("Confirmed", finalepiclassification, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T),1,0)) %>% filter(between(reporting_date,((params$dateofreport - days(1)) - days(7))-days(7), (params$dateofreport - days(1)) - days(7))) %>% group_by(country) %>%
+  dplyr::summarise(confirmed_pre7d=length(grep("Confirmed",finalepiclassification,ignore.case = T)),
+                   probable_pre7d=length(grep("Probable",finalepiclassification, ignore.case = T)),
+                   dead_pre7d=length(grep("Dead",finaloutcome, ignore.case = T)),
+                   recovered_pre7d=length(grep("Recovered",finaloutcome, ignore.case = T)),
+                   active_pre7d=length(grep("Alive|Probable",finaloutcome, ignore.case = T)),
+                   hwc_confirmed_pre7d=sum(hcw,na.rm=T))
+
+prevday7<-merge(prevday7,countries, all=T)
+
+
+# Window past 14 to find countries with cases with increase in 20% in past 14 days
+#calculated by confirmed at minimum date vs confimred at maxmimum date - if confirmed at maxmum date is >20%*confirmed at minimum date it is highlighted 
+day14<-df %>% filter(reporting_date >= (params$dateofreport - days(1)) - days(14)) %>% 
+  group_by(country,reporting_date) %>% summarise(confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T))) %>% 
+  group_by(country) %>% summarise(increased_14=ifelse(confirmed[reporting_date==max(reporting_date) & max(reporting_date)!=min(reporting_date)]>(confirmed[reporting_date==min(reporting_date) & min(reporting_date)!=max(reporting_date)])*1.2,1,0))
+
+day14<-merge(day14,countries, all=T)
+
+# Window Past 24hours 
+past24h<-df %>% mutate(hcw=ifelse(grepl("Confirmed", finalepiclassification, ignore.case = T) & grepl("yes", healthcare_worker , ignore.case = T),1,0)) %>%
+  filter(between(reporting_date, params$dateofreport -days(2), params$dateofreport - days(1))) %>% group_by(country) %>%
+  dplyr::summarise(confirmed_24h=length(grep("Confirmed",finalepiclassification,ignore.case = T)),
+                   probable_24h=length(grep("Probable",finalepiclassification, ignore.case = T)),
+                   dead_24h=length(grep("Dead",finaloutcome, ignore.case = T)),
+                   recovered_24h=length(grep("Recovered",finaloutcome, ignore.case = T)),
+                   active_24h=length(grep("Alive|Probable",finaloutcome, ignore.case = T)),
+                   hwc_confirmed_24h=sum(hcw, na.rm=T))
+
+ 
+
+past24h<-merge(past24h,countries, all=T)
+
+# Window Past 28days 
+past28days<-df %>% mutate(hcw=ifelse(grepl("Confirmed", finalepiclassification, ignore.case = T) & grepl("yes", healthcare_worker, ignore.case = T),1,0)) %>% 
+  filter(between(reporting_date, (params$dateofreport - days(1))-days(28), (params$dateofreport - days(1)))) %>% group_by(country) %>%
+  dplyr::summarise(confirmed_28d=length(grep("Confirmed",finalepiclassification,ignore.case = T)),
+                   probable_28d=length(grep("Probable",finalepiclassification, ignore.case = T)),
+                   dead_28d=length(grep("Dead",finaloutcome, ignore.case = T)),
+                   recovered_28d=length(grep("Recovered",finaloutcome, ignore.case = T)),
+                   active_28d=length(grep("Alive|Probable",finaloutcome, ignore.case = T)),
+                   hwc_confirmed_28d=sum(hcw,na.rm=T))
+
+past28days<-merge(past28days, countries, all=T)
+
+
+#highlight if South Africa or Kenya not in merged file but create dummy lines in df for then
+SA_KEN<-c("South Africa","Kenya") %in% df$country
+if(SA_KEN[1]=="FALSE" & SA_KEN[2]=="FALSE"){
+  text<-"South Africa and Kenya are not in this merged input file"
+  all<- all %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  day7<- day7 %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  prevday7 <- prevday7 %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  day14 <- day14 %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  past24h <- past24h %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+  past28days<- past28days %>% add_row(country = "South Africa") %>% add_row(country = "Kenya")
+}else if(SA_KEN[1]=="TRUE" & SA_KEN[2]=="FALSE"){
+  text<-"Kenya is not in this merged input file"
+  all<- all %>%  add_row(country = "Kenya")
+  day7<- day7 %>% add_row(country = "Kenya")
+  prevday7 <- prevday7 %>% add_row(country = "Kenya")
+  day14 <- day14 %>% add_row(country = "Kenya")
+  past24h <- past24h %>% add_row(country = "Kenya")
+  past28days<- past28days %>% add_row(country = "Kenya")
+}else if(SA_KEN[1]=="FALSE" & SA_KEN[2]=="TRUE"){
+  text<-"South Africa is not in this merged input file"
+  all<- all %>% add_row(country = "South Africa") 
+  day7<- day7 %>% add_row(country = "South Africa") 
+  prevday7 <- prevday7 %>% add_row(country = "South Africa") 
+  day14 <- day14 %>% add_row(country = "South Africa") 
+  past24h <- past24h %>% add_row(country = "South Africa")
+  past28days<- past28days %>% add_row(country = "South Africa") 
+}else if(SA_KEN[1]=="FALSE" & SA_KEN[2]=="TRUE"){
+  text<-"South Africa and Kenya are in this merged input file"
+}
+```
+- Note: `r paste(text)`
+```{r echo=F}
+#for generation of 24 hour highlights
+
+if(nrow(past24h[!is.na(past24h$confirmed_24h),])==0){
+  text<-"No countries reported"
+  SA<-"did not report"
+  KEN<-"did not report"
+  SA_perc<-"did not report"
+  KEN_perc<-"did not report"
+} else if(sum(past24h$confirmed_24h, na.rm=T)==0) {
+  text<-"No cases reported"
+  SA<-"no cases reported"
+  KEN<-"no cases reported"
+  SA_perc<-"no cases reported"
+  KEN_perc<-"no cases reported"
+} 
+
+if(is.na(past24h$confirmed_24h[past24h$country=="South Africa"])){
+  SA<-"did not report"
+  SA_perc<-"did not report"
+}
+
+if(is.na(past24h$confirmed_24h[past24h$country=="Kenya"])){
+     KEN<-"did not report"
+    KEN_perc<-"did not report"
+}
+```
+### \centre `r paste("Report generated for", format(params$dateofreport, '%d %B, %Y'))` \centre
+
+# Highlights
+
+- `r paste(text)` in the past 24 hours (00:00, `r format(params$dateofreport - days(2), "%d %B %Y")` to 00:00, `r format(params$dateofreport - days(1), "%d %B %Y")`), including `r paste(SA)` (`r SA_perc`) in South Africa and `r paste(KEN)` (`r KEN_perc`) in Kenya 
+
+```{r echo=F, message=F}
+#for generation of 7 day averages  
+avday7<- df %>% filter(reporting_date >= (params$dateofreport - days(1)) - days(7)) %>% 
+  group_by(country,reporting_date) %>% summarise(confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T)), dead=length(grep("Dead",finaloutcome, ignore.case = T))) %>% group_by(reporting_date) %>% summarise(daily_cases=sum(confirmed, na.rm = T), daily_death=sum(dead, na.rm=T))
+
+avprevday7<- df %>% filter(between(reporting_date,((params$dateofreport - days(1)) - days(7))-days(7), (params$dateofreport - days(1)) - days(7))) %>% 
+  group_by(country,reporting_date) %>% summarise(confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T)), dead=length(grep("Dead",finaloutcome, ignore.case = T))) %>% group_by(reporting_date) %>% summarise(daily_cases=sum(confirmed, na.rm = T), daily_death=sum(dead, na.rm = T)) 
+
+```
+
+- Average `r round(sum(avday7$daily_cases, na.rm=T)/7)` new cases reported daily in the past 7 days vs `r round(sum(avprevday7$daily_cases, na.rm=T)/7)` in the previous 7 days
+
+```{r echo=F}
+#cases in last 7 days 
+
+if(nrow(day7[!is.na(day7$dead_7d),])==0){
+  text<-"No countries reported in last 7 days"
+  SA<-"did not report"
+  KEN<-"did not report"
+  SA_perc<-"did not report"
+  KEN_perc<-"did not report"
+  } else if(sum(day7$dead_7d, na.rm=T)==0) {
+  text<-"No deaths reported"
+  SA<-"no deaths reported"
+  KEN<-"no deaths reported"
+  SA_perc<-"no deaths reported"
+  KEN_perc<-"no deaths reported"
+} else {
+   lc<-length(unique(day7$country[!is.na(day7$dead_7d)]))
+   SA<- day7$dead_7d[day7$country=="South Africa"]
+   SA_perc<-paste0(round((day7$dead_7d[day7$country=="South Africa"])/sum(day7$dead_7d, na.rm = T)*100, digits=1), "%")
+   KEN<-day7$dead_7d[day7$country=="Kenya"]
+   KEN_perc<-paste0(round((day7$dead_7d[day7$country=="Kenya"])/sum(day7$dead_7d, na.rm = T)*100, digits=1), "%") 
+   text<-paste(sum(day7$dead_7d, na.rm = T), "new deaths reported by", lc, "countries")
+}
+
+if(is.na(day7$dead_7d[day7$country=="South Africa"])){
+  SA<-"did not report"
+  SA_perc<-"did not report"
+}
+
+if(is.na(day7$dead_7d[day7$country=="Kenya"])){
+     KEN<-"did not report"
+    KEN_perc<-"did not report"
+}
+```
+
+- `r paste(text)` in the past 7 days including `r paste(SA)` (`r paste(SA_perc)`) in South Africa and `r paste(KEN)` (`r KEN_perc`) in Kenya 
+
+- Average of `r round(sum(avday7$daily_death, na.rm=T)/7)` new deaths reported daily in the past 7 days vs. `r round(sum(avprevday7$daily_death, na.rm=T)/7)` in the previous 7 days
+
+
+## Cumulatively:
+- Total cases: `r sum(all$confirmed, na.rm=T)`
+- Total deaths: `r sum(all$dead, na.rm=T)`, (`r percent(sum(all$dead, na.rm=T)/sum(all$confirmed, na.rm=T))`) 
+- Total recovered: `r sum(all$recovered, na.rm=T)`, (`r percent(sum(all$recovered, na.rm=T)/(sum(all$confirmed, na.rm=T) +sum(all$probable, na.rm=T)))`)
+- Total health worker infections: `r sum(all$hwc_confirmed, na.rm=T)`, (`r percent(sum(all$hwc_confirmed, na.rm=T)/sum(all$confirmed, na.rm=T))`)
+- `r length(day14$country[day14$increased_14==1 & !is.na(day14$increased_14)])` countries with over 20% increase in the past 14 days: **`r paste(unique(day14$country[day14$increased_14==1 & !is.na(day14$increased_14)]), collapse=", ")`**
+
+
+  
+# 1. Situation in Past 24 hours
+- `r paste0(format((params$dateofreport - days(1)), "%d %B %Y"),": ", ordinal(epiday))` day since since the notification of the first COVID-19 cases in the African region
+ 
+```{r echo=FALSE}
+
+#Last 24hours cases and top3
+
+if(nrow(past24h[!is.na(past24h$confirmed_24h),])==0){
+  text<-"No countries reported in last 24hrs"
+ top3_text<- "No countries reported in last 24hrs"
+ 
+} else if(sum(past24h$confirmed_24h, na.rm=T)==0) { 
+  text="0 new cases were reported"
+  top3_text<- "0 new cases were reported"
+ 
+} else {
+   text<-paste(sum(past24h$confirmed_24h, na.rm = T), "new confirmed cases reported by",length(unique(past24h$country[!is.na(past24h$confirmed_24h)])), "countries")
+   
+  top3_con_24<-past24h %>% top_n(n = 3, confirmed_24h) %>% filter(!is.na(confirmed_24h) & confirmed_24h>0)  %>%  arrange(desc(confirmed_24h)) %>% mutate(confirmed_24_perc=paste(round((confirmed_24h/sum(past24h$confirmed_24h, na.rm = T))*100), "%")) %>% select(c("country","confirmed_24h","confirmed_24_perc"))
+  
+ top3_text<- paste0( top3_con_24$country[1], " ",top3_con_24$confirmed_24h[top3_con_24$country==top3_con_24$country[1]], " (", top3_con_24$confirmed_24_perc[top3_con_24$country==top3_con_24$country[1]], "), ",  top3_con_24$country[2], " ",top3_con_24$confirmed_24h[top3_con_24$country==top3_con_24$country[2]], " (", top3_con_24$confirmed_24_perc[top3_con_24$country==top3_con_24$country[2]], "), ",  top3_con_24$country[3], " ",top3_con_24$confirmed_24h[top3_con_24$country==top3_con_24$country[3]], " (", top3_con_24$confirmed_24_perc[top3_con_24$country==top3_con_24$country[3]], ")")
+ 
+}
+
+```
+
+- `r paste(text)`
+
+- Top 3 countries: `r paste(top3_text)`
+
+- An average `r round(sum(avday7$daily_cases)/7)` new cases reported daily in the past 7 days   vs. `r round(sum(avprevday7$daily_cases)/7)` in the previous 7 days
+
+
+```{r echo=F}
+#last 24 hours deaths and top 3 countries deaths
+
+if(nrow(past24h[!is.na(past24h$dead_24h),])==0){
+  text<-"No countries reported in last 24hrs"
+ top3_text<- "No countries reported in last 24hrs"
+ 
+} else if(sum(past24h$dead_24h, na.rm=T)==0) { 
+  text="0 new deaths were reported"
+  top3_text<- "0 new deaths were reported"
+}else{
+  
+  text<-paste(sum(past24h$dead_24h, na.rm = T), "new deaths reported by",length(unique(past24h$country[!is.na(past24h$dead_24h)])), "countries")
+  
+  top3_dead_24<-past24h %>% top_n(n = 3, dead_24h) %>% filter(!is.na(dead_24h) & dead_24h>0) %>% arrange(desc(dead_24h)) %>% mutate(dead_24_perc=percent(dead_24h/sum(past24h$dead_24h,na.rm = T))) %>%
+  select(c("country","dead_24h","dead_24_perc"))
+
+  top3_text<- paste0( top3_dead_24$country[1], " ",top3_dead_24$dead_24h[top3_dead_24$country==top3_dead_24$country[1]], " (", top3_dead_24$dead_24_perc[top3_dead_24$country==top3_dead_24$country[1]], "), ",  top3_dead_24$country[2], " ",top3_dead_24$dead_24h[top3_dead_24$country==top3_dead_24$country[2]], " (", top3_dead_24$dead_24_perc[top3_dead_24$country==top3_dead_24$country[2]], "), ",  top3_dead_24$country[3], " ",top3_dead_24$dead_24h[top3_dead_24$country==top3_dead_24$country[3]], " (", top3_dead_24$dead_24_perc[top3_dead_24$country==top3_dead_24$country[3]], ")")
+ lc<-length(unique(past24h$country[past24h$dead_24h!=0]))
+}
+```
+- `r text`
+
+- Top 3 countries in number of deaths: `r paste(top3_text)`
+
+```{r echo=FALSE}
+#Healthcare worker infections  in last 24hours 
+
+
+if(nrow(past24h[!is.na(past24h$hwc_confirmed_24h),])==0){
+  text<-"No countries reported in last 24hrs"
+} else if(sum(past24h$hwc_confirmed_24h, na.rm=T)==0) { 
+  text="0 new health worker infections were reported"
+} else{
+  hcw<-past24h %>% filter(!is.na(hwc_confirmed_24h) & hwc_confirmed_24h>0) %>% arrange(desc(hwc_confirmed_24h)) %>%
+    select(c("country", "hwc_confirmed_24h"))  
+  #only listing countries that have had deaths from hcw in past 24h 
+hcw$value<- paste0("(", format(unlist(hcw$hwc_confirmed_24h)),")")
+hcw$value1<- paste(hcw$country,hcw$value, sep=" ")
+text<-paste(sum(hcw$hwc_confirmed_24h, na.rm=T),"new health worker infections were reported from", paste0(hcw$value1, collapse= ", "))
+
+}
+```
+- `r paste(text)`
+
+
+# 2. Situation since the beginning of the pandemic and in the past 28 days
+
+## Cumlative cases
+- A total of `r sum(all$confirmed, na.rm=T) + sum(all$probable, na.rm=T)` cases (`r sum(all$confirmed, na.rm=T)` confirmed, `r sum(all$probable, na.rm=T)`, probable) reported since the beginning of the pandemic.
+
+- `r sum(all$recovered, na.rm=T)` cases have recovered from the disease, representing `r percent(sum(all$recovered, na.rm=T)/(sum(all$confirmed, na.rm=T) +sum(all$probable,na.rm=T)))` of all cases.
+
+ 
+``` {r echo=FALSE}
+
+#Top 5 countries overall 
+
+top5_con <- all  %>% top_n(n = 5, confirmed) %>% filter(confirmed>0) %>% arrange(desc(confirmed)) %>% mutate(confirmed_perc=paste0(round((confirmed/sum(all$confirmed, na.rm=T))*100, digits = 1), "%")) %>%
+    select(c("country", "confirmed", "confirmed_perc"))
+    
+  text<- paste0( top5_con$country[1], " ",top5_con$confirmed[top5_con$country==top5_con$country[1]], " (", top5_con$confirmed_perc[top5_con$country==top5_con$country[1]], "), ",  top5_con$country[2], " ",top5_con$confirmed[top5_con$country==top5_con$country[2]], " (", top5_con$confirmed_perc[top5_con$country==top5_con$country[2]], "), ",  top5_con$country[3], " ",top5_con$confirmed[top5_con$country==top5_con$country[3]], " (", top5_con$confirmed_perc[top5_con$country==top5_con$country[3]], "), ",  top5_con$country[4], " ",top5_con$confirmed[top5_con$country==top5_con$country[4]], " (", top5_con$confirmed_perc[top5_con$country==top5_con$country[4]], "),",  top5_con$country[5], " ",top5_con$confirmed[top5_con$country==top5_con$country[5]], " (", top5_con$confirmed_perc[top5_con$country==top5_con$country[5]], ")")
+  
+```
+- The following five countries reported the highest number of cases: `r paste(text)`
+
+``` {r echo=FALSE}
+#Cunmulative number of cases in past 28days and top 5 in 28 days 
+if(nrow(past28days[!is.na(past28days$confirmed_28d),])==0){
+  text<-"No countries reported in the past 28 days"
+  top5_text<-"No countries reported in the past 28 days"
+} else if(sum(past28days$confirmed_28d, na.rm=T)==0){
+  text<-"No cases reported in the past 28 days"
+  top5_text<-"No cases reported reported in the past 28 days"
+  } else{ 
+  top5_con_28d <- past28days  %>% top_n(n = 5, confirmed_28d) %>% filter(!is.na(confirmed_28d) & confirmed_28d>0) %>% arrange(desc(confirmed_28d)) %>% mutate(confirmed_perc=paste0(round((confirmed_28d/sum(past28days$confirmed_28d, na.rm = T))*100, digit=1),"%")) %>%
+    select(c("country", "confirmed_28d", "confirmed_perc"))
+  
+  text<-paste(sum(past28days$confirmed_28d, na.rm = T), "new casesreported by",length(unique(past28days$country[!is.na(past28days$confirmed_28d)])), "countries")
+  top5_text<- paste0( top5_con_28d$country[1], " ",top5_con_28d$confirmed_28d[top5_con_28d$country==top5_con_28d$country[1]], " (", top5_con_28d$confirmed_perc[top5_con_28d$country==top5_con_28d$country[1]], "), ",  top5_con_28d$country[2], " ",top5_con_28d$confirmed_28d[top5_con_28d$country==top5_con_28d$country[2]], " (", top5_con_28d$confirmed_perc[top5_con_28d$country==top5_con_28d$country[2]], "), ",  top5_con_28d$country[3], " ",top5_con_28d$confirmed_28d[top5_con_28d$country==top5_con_28d$country[3]], " (", top5_con_28d$confirmed_perc[top5_con_28d$country==top5_con_28d$country[3]], "), ",  top5_con_28d$country[4], " ",top5_con_28d$confirmed_28d[top5_con_28d$country==top5_con_28d$country[4]], " (", top5_con_28d$confirmed_perc[top5_con_28d$country==top5_con_28d$country[4]], "),",  top5_con_28d$country[5], " ",top5_con_28d$confirmed_28d[top5_con_28d$country==top5_con_28d$country[5]], " (", top5_con_28d$confirmed_perc[top5_con_28d$country==top5_con_28d$country[5]], ")")
+ 
+}
+```
+- `r paste0(round(sum(past28days$confirmed_28d, na.rm=T)/sum(all$confirmed, na.rm=T)*100,digits=1), "%")` of the cumulative cases were reported in the past 28 days (`r format((params$dateofreport - days(1))-days(28), "%d %B %Y")` - `r format(params$dateofreport - days(1), "%d %B %Y")`) : `r paste(text)`
+
+- The following five countries reported the highest number of new cases in in the past 28 days: `r paste(top5_text)`
+
+```{r echo=F}
+# Cases that have not reported in X amount of days, currently user defined to 28 days 
+daysofinterest<-28
+dayreport<- all %>% filter(dayslastreport>daysofinterest) %>% select(c("country", "dayslastreport")) 
+dayreport$dayslastreport<-paste0("(", format(unlist(dayreport$dayslastreport))," days)")
+dayreport$value<-paste(dayreport$country, dayreport$dayslastreport , sep=" ")
+```
+
+- `r as.numeric(count(all[all$dayslastreport<=daysofinterest,]))` countries have reported new confirmed cases in our database in the last `r daysofinterest` days 
+
+- Countries that have not reported new confirmed cases in our database within the last `r daysofinterest` days: `r paste(dayreport$value, collapse=",")`, however there is no officical report indicating zero confirmed cases
+
+
+```{r echo=F}
+#merge dataframe with cumlative numbers with population dataframe to calculate population rates and attack rate and cases per million
+
+all_pop<-merge(all, population, by="country")
+all_pop$attackrate<-round(((all_pop$confirmed + all_pop$probable)/all_pop$population)*1000000)
+all_pop$all_deathpermil<-round(((all_pop$dead)/all_pop$population)*1000000)
+all_pop$all_casepermill<-round(((all_pop$confirmed)/all_pop$population)*1000000)
+```
+- The average cumulative attack rate (number of cases per million) in the African region is estimated at `r round(mean(all_pop$attackrate))`/million population, ranging from `r round(min(all_pop$attackrate))` (`r all_pop$country[all_pop$attackrate==min(all_pop$attackrate)]`) to `r round(max(all_pop$attackrate))` (`r all_pop$country[all_pop$attackrate==max(all_pop$attackrate)]`)
+
+
+``` {r echo=FALSE}
+#Top 5 and bottom 5 attack rate overall 
+
+top5_attack <- all_pop  %>% top_n(n = 5, attackrate) %>% filter(attackrate>0) %>% arrange(desc(attackrate)) %>% 
+    select(c("country", "attackrate")) 
+
+top5_attack$attackrate<- paste0("(", format(unlist(top5_attack$attackrate))," cases/million population)")
+top5_attack$value<- paste(top5_attack$country, top5_attack$attackrate, sep= " ")
+
+
+bottom5_attack <- all_pop  %>% top_n(n = -5, attackrate) %>% filter(attackrate>0) %>% 
+    select(c("country", "attackrate")) 
+
+bottom5_attack$attackrate<- paste0("(", format(unlist(bottom5_attack$attackrate))," cases/million population)")
+bottom5_attack$value<- paste(bottom5_attack$country, bottom5_attack$attackrate, sep= " ")
+
+```
+-  `r paste(top5_attack$value, collapse=", ")` have the highest attack rates in the region. `r paste(bottom5_attack$value, collapse=", ")` are the five countries with the lowest cumulative attack rate.
+
+
+
+
+## Cumlative deaths
+
+- A total of `r sum(all$dead, na.rm=T)` COVID-19 related deaths have been reported in the region, a case fatality ratio of `r paste(round((sum(all$dead, na.rm=T)/sum(all$confirmed, na.rm=T))*100,digits=1),"%")` 
+
+``` {r echo=FALSE}
+#Cumulative deaths
+
+deaths<- all  %>% top_n(n = 5, dead) %>% filter(dead>0) %>% arrange(desc(dead)) %>% 
+    select(c("country", "dead", "CFR")) 
+
+text<- paste0( deaths$country[1], " ",deaths$dead[deaths$country==deaths$country[1]], " (", round((deaths$dead[deaths$country==deaths$country[1]])/sum(all$dead, na.rm=T)*100), "% of all deaths), ",  deaths$country[2], " ",deaths$dead[deaths$country==deaths$country[2]], " (", round((deaths$dead[deaths$country==deaths$country[2]])/sum(all$dead, na.rm=T)*100, digits = 1), "% of all deaths), ",  deaths$country[3], " ",deaths$dead[deaths$country==deaths$country[3]], " (", round((deaths$dead[deaths$country==deaths$country[3]])/sum(all$dead, na.rm=T)*100, digits = 1), "% of all deaths), ",  deaths$country[4], " ",deaths$dead[deaths$country==deaths$country[4]], " (", round((deaths$dead[deaths$country==deaths$country[4]])/sum(all$dead, na.rm=T)*100, digits = 1), "% of all deaths),",  deaths$country[5], " ",deaths$dead[deaths$country==deaths$country[5]], " (", round((deaths$dead[deaths$country==deaths$country[5]])/sum(all$dead, na.rm=T)*100, digits = 1), "% of all deaths)")
+```
+- The following five countries reported the highest number of deaths cumulatively: `r paste(text)`
+
+``` {r echo=FALSE}
+
+#Deaths in 28days and top 5 deaths in 28 days 
+if(nrow(past28days[!is.na(past28days$dead_28d),])==0){
+  text<-"No countries reported in the past 28 days"
+  top5_text<-"No countries reported in the past 28 days"
+} else if(sum(past28days$dead_28d, na.rm=T)==0){
+  text<-"No deaths reported in the past 28 days"
+  top5_text<-"No deaths reported in the past 28 days" 
+} else { 
+  top5_con_28d <- past28days  %>% top_n(n = 5, dead_28d) %>% filter(!is.na(dead_28d) & dead_28d>0) %>% arrange(desc(dead_28d)) %>% mutate(dead_perc=paste0(round((dead_28d/sum(past28days$dead_28d, na.rm = T))*100, digit=1),"%")) %>%
+    select(c("country", "dead_28d", "dead_perc"))
+  
+  text<-paste(sum(past28days$dead_28d, na.rm = T), "new deaths reported by",length(unique(past28days$country[!is.na(past28days$dead_28d)])), "countries")
+  top5_text<- paste0( top5_con_28d$country[1], " ",top5_con_28d$dead_28d[top5_con_28d$country==top5_con_28d$country[1]], " (", top5_con_28d$dead_perc[top5_con_28d$country==top5_con_28d$country[1]], "), ",  top5_con_28d$country[2], " ",top5_con_28d$dead_28d[top5_con_28d$country==top5_con_28d$country[2]], " (", top5_con_28d$dead_perc[top5_con_28d$country==top5_con_28d$country[2]], "), ",  top5_con_28d$country[3], " ",top5_con_28d$dead_28d[top5_con_28d$country==top5_con_28d$country[3]], " (", top5_con_28d$dead_perc[top5_con_28d$country==top5_con_28d$country[3]], "), ",  top5_con_28d$country[4], " ",top5_con_28d$dead_28d[top5_con_28d$country==top5_con_28d$country[4]], " (", top5_con_28d$dead_perc[top5_con_28d$country==top5_con_28d$country[4]], "),",  top5_con_28d$country[5], " ",top5_con_28d$dead_28d[top5_con_28d$country==top5_con_28d$country[5]], " (", top5_con_28d$dead_perc[top5_con_28d$country==top5_con_28d$country[5]], ")")
+ 
+}
+```
+- `r paste(round(sum(past28days$dead_28d, na.rm=T)/sum(all$dead, na.rm=T)*100,digits=1),"%")` of all deaths were reported in the past 28 days: `r paste(text)`
+
+- The following five countries reported the highest number of deaths in the past 28 days: `r paste(top5_text)`
+
+``` {r echo=FALSE}
+# Countries that have not yet reported deaths, if all have defaut to all 47 countries have reported deaths 
+if(is_empty(all$country[all$dead==0])){
+text<-paste("All", length(unique(all$country)), "countires have reported deaths")
+  } else {
+text<-paste(paste(all$country[all$dead==0], collapse= ", "), "have not yet recorded COVID-19 related deaths") 
+  }
+```
+
+- `r paste(text)`
+
+- The median number of deaths per million in the African region is estimated at `r paste(median(all_pop$all_deathpermil),"/million")` (range: `r min(all_pop$all_deathpermil)` -  `r max(all_pop$all_deathpermil)`  /million)
+
+``` {r echo=FALSE}
+# deaths per million 
+top5_deathpermil <- all_pop  %>% top_n(n = 5, all_deathpermil) %>% filter(all_deathpermil>0) %>% arrange(desc(all_deathpermil)) %>% 
+    select(c("country", "all_deathpermil")) 
+
+top5_deathpermil$all_deathpermil<- paste0("(", format(unlist(top5_deathpermil$all_deathpermil))," deaths/million population)")
+top5_deathpermil$value<- paste(top5_attack$country, top5_attack$attackrate, sep= " ")
+
+```
+- `r paste(top5_deathpermil$value, collapse=", ")` are the five countries with the highest number of COVID-19 related deaths per million population.
+
+
+## Cumulative recoveries 
+
+- A total of `r sum(all$recovered, na.rm=T)` people have recovered from the disease, representing `r percent(sum(all$recovered,na.rm=T)/(sum(all$confirmed, na.rm=T) +sum(all$probable, na.rm=T)))` of all cases
+
+``` {r echo=FALSE}
+# Cumulative recoveries 
+top5_rr <- all_pop  %>% top_n(n = 5, recoveryrate) %>% filter(recoveryrate>0) %>% arrange(desc(recoveryrate)) %>% 
+    select(c("country", "recoveryrate")) 
+
+if(nrow(top5_rr)==0){
+  top5_rr <- all_pop  %>% top_n(n = -5, recoveryrate) %>% select(c("country", "recoveryrate")) 
+  top5_rr$recoveryrate<- paste0("(", format(unlist(top5_rr$recoveryrate)),"%)")
+  top5_rr$value<- paste(top5_rr$country, top5_rr$recoveryrate, sep= " ")
+  text<-"recovery rate unreliable- few countries in dataset reporting recovered"
+}else{
+top5_rr$recoveryrate<- paste0("(", format(unlist(top5_rr$recoveryrate)),"%)")
+top5_rr$value<- paste(top5_rr$country, top5_rr$recoveryrate, sep= " ")
+text<-"countries in dataset reporting recovered"
+}
+
+
+bottom5_rr <- all_pop  %>% top_n(n = -5, recoveryrate) %>% filter(recoveryrate>0) %>% 
+    select(c("country", "recoveryrate")) 
+
+if(nrow(bottom5_rr)==0){
+  bottom5_rr <- all_pop  %>% top_n(n = -5, recoveryrate) %>% select(c("country", "recoveryrate")) 
+  bottom5_rr$recoveryrate<- paste0("(", format(unlist(bottom5_rr$recoveryrate)),"%)")
+  bottom5_rr$value<- paste(bottom5_rr$country, bottom5_rr$recoveryrate, sep= " ")
+  text<-"recovery rate unreliable- few countries in dataset reporting recovered"
+}else{
+bottom5_rr$recoveryrate<- paste0("(", format(unlist(bottom5_rr$recoveryrate)),"%)")
+bottom5_rr$value<- paste(bottom5_rr$country, bottom5_rr$recoveryrate, sep= " ")
+text<-"countries in dataset reporting recovered"
+}
+
+```
+-  `r paste(top5_rr$value, collapse=", ")` are the five countries with the highest recovery rate.
+
+- The following five countries have recorded the lowest recovery rate: `r paste(bottom5_rr$value, collapse=", ")`. This may be due to possible under reporting of recoveries.
+
+- Note: `r paste(text)`
+
+## Heathcare worker infections 
+
+- A total number of `r sum(all$hwc_confirmed, na.rm=T)` health care worker worker infections have been reported in the region, representing `r percent(sum(all$hwc_confirmed, na.rm=T)/sum(all$confirmed, na.rm=T))` of all cases.
+
+``` {r echo=FALSE}
+
+# health care worker infections and top 5
+
+ hcw <- all  %>% top_n(n = 5, hcwrate) %>% filter(hcwrate>0) %>% arrange(desc(hcwrate)) %>% 
+    select(c("country", "hwc_confirmed" ,"hcwrate", )) 
+hcw$hcwrate<-paste0(hcw$hcwrate,"%")
+hcw$value1<- paste(hcw$hwc_confirmed,hcw$hcwrate, sep=" ")
+hcw$value1<- paste0("(", format(unlist(hcw$value1)),")")
+
+
+```
+
+- The following five countries recorded the highest percentage of health workers infections out of all cases: `r paste(c(rbind(hcw$country, hcw$value1)), collapse=", ") `
+
+
+- `r paste(all$country[all$hwc_confirmed==0], collapse= ", ")` have not reported any healthcare worker infections
+
+
+# Annexes
+
+```{r echo=F, message=F, warning=F, fig.cap=paste0("Annexe 1: Distribution of new cases with a 7-day moving average by reporting date in the African region, ",format(min(df$reporting_date), "%d %B %Y")," - ",format(max(df$reporting_date), "%d %B %Y"), " n= ", sum(all$confirmed, na.rm=T)), fig.height = 10, fig.width = 15}
+
+
+
+#Overall absolute distribution 
+df %>% 
+  dplyr::group_by(reporting_date) %>% dplyr::summarise(confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T))) %>% 
+  mutate(sevendayavg_overall = slider::slide_dbl(confirmed, 
+                                                 ~mean(.x, na.rm = TRUE),
+                                                 .before = 7, ## number of previous days count to include
+                                                 .complete = TRUE) ## only include days which have the full 7 previous days available
+  ) %>% ggplot(aes(x=as.Date(reporting_date) ,y=confirmed)) +
+  geom_bar(stat = "identity", size=1, fill="#3288bd") +
+  geom_line(aes(x = as.Date(reporting_date), y = round(sevendayavg_overall), colour="#ff3300"), size=1) +
+  scale_x_date(date_breaks = "1 week", date_labels = "%b %d") + pub_theme4 + 
+  labs(x="Date",y="Absolute number of confirmed cases") + scale_color_discrete(name = "7 day rolling average", labels = c(""))
+
+
+
+
+```
+
+
+```{r echo=F, message=F, warning=F}
+
+#identify Top 10 countries based off confirmed case numbers
+top10<-all %>% top_n(10,confirmed) %>% arrange(desc(confirmed)) %>% mutate(label=paste0(country,' n=', confirmed))
+top10list<-unique(top10$country)
+
+#Create dataframe for Overall top 10 countries  
+ epitop10 <- df %>% mutate(top10=country %in% top10list)  %>%
+  mutate(top10=as.factor(ifelse(top10==TRUE,country,"Other"))) %>%
+  dplyr::group_by(reporting_date, top10) %>% 
+  dplyr::summarise(confirmed=length(grep("Confirmed",finalepiclassification,ignore.case = T)), dead=length(grep("Dead",finaloutcome, ignore.case = T))) %>% group_by(top10) %>%  mutate(label.con=paste(top10,"n=",sum(confirmed, na.rm=T)), label.dead= paste(top10,"n=",sum(dead, na.rm=T))) %>% group_by(top10) %>% mutate(confirmed.cumsum=cumsum(confirmed), dead=cumsum(dead)) %>% 
+  tsibble::as_tsibble(key=top10,index = reporting_date) %>% 
+  tsibble::group_by_key() %>%
+    mutate(sevendayavg_top10 = slider::slide_dbl(confirmed, 
+                                    ~mean(.x, na.rm = TRUE),
+                                    .before = 7, ## number of previous days count to include
+                                    .complete = TRUE),
+                                    sevendayavg_top10_cumsum = slider::slide_dbl(confirmed.cumsum, 
+                                    ~mean(.x, na.rm = TRUE),
+                                    .before = 7, ## number of previous days count to include
+                                    .complete = TRUE)) ## only include days which have the full 7 previous days available 
+
+```
+ 
+``` {r echo=F, message=F, warning=F, fig.cap=paste0("Annexe 2: Distribution of new cases with a 7-day moving average by reporting date for current top 10 coutries for cases in the African region, ",format(min(epitop10$reporting_date), "%d %B %Y")," - ",format(max(epitop10$reporting_date), "%d %B %Y"), " n= ", sum(epitop10$confirmed, na.rm=T)), fig.height = 15, fig.width = 15}
+# Absolute Distribution of cases and deaths in 28 days across the overall top 10 countries and others
+
+  ggplot(epitop10,aes(x=as.Date(epitop10$reporting_date) ,y=epitop10$confirmed)) +
+  geom_bar(aes(fill = label.con), stat="identity", size=.3) + 
+  geom_line(aes(x = as.Date(epitop10$reporting_date), y = round(epitop10$sevendayavg_top10), colour="#ff3300"),size=1) +
+  facet_wrap(~label.con, scales = "free_y") + 
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %d", limits = c(as.Date(min(epitop10$reporting_date)),as.Date(max(epitop10$reporting_date))), expand =c(0,0)) + pub_theme4 + theme(strip.text = element_text(size=14)) +
+  labs(x="Date",y="Absolute number of confirmed cases") + scale_color_discrete(name = "7 day rolling average", labels = c("")) + scale_fill_manual(values = mycolors, guide = FALSE)
+
+```
+
+
+```{r echo=F, message=F, warning=F}
+#Create a dataframe for the top 10 countries for cases in 28 days 
+top10_28d<-past28days %>% top_n(10,confirmed_28d) %>% arrange(desc(confirmed_28d)) %>% mutate(label=paste0(country,' n=', confirmed_28d))
+top10list_28d<-unique(top10_28d$country) 
+epitop10_28d<- past28days %>% mutate(top10=country %in% top10list)  %>%
+  mutate(top10=as.factor(ifelse(top10==TRUE,country,"Other")))  %>%  group_by(top10) %>% summarise(confirmed_28d=sum(confirmed_28d, na.rm=T), dead_28d=sum(dead_28d, na.rm = T)) %>% reshape2::melt(id.vars = "top10", measure.vars = c("confirmed_28d","dead_28d")) %>% mutate(label=ifelse(variable=="confirmed_28d","Cases", "Deaths"))
+
+past28daysdates<-df %>% 
+  filter(between(reporting_date, (params$dateofreport - days(1))-days(28), params$dateofreport -days(1)))
+```
+
+```{r echo=F, message=F, warning=F, fig.cap=paste0("Annex 3: Distribution of new confirmed COVID-19 cases and deaths in the past 28 days in the 10 most affected countries in the African Region, ",format(min(past28daysdates$reporting_date), "%d %B %Y")," - ",format(max(past28daysdates$reporting_date), "%d %B %Y"), " n= ", sum(past28days$confirmed_28d, na.rm=T)), fig.height = 15, fig.width = 15}
+#bar graph distribution of cases and deaths for each country in the top 10 and others in the 28days 
+ggplot(epitop10_28d,aes(x=top10, y=value)) +
+  geom_bar(aes(fill = epitop10_28d$label), stat="identity", size=.3) + facet_wrap(~epitop10_28d$label, scales = "free",nrow=2, strip.position = "left", 
+                labeller = as_labeller(c(Cases = "Number of COVID-19 cases", Deaths = "Number of COVID-19 deaths")))  +
+     ylab(NULL) + xlab(NULL) +
+     theme(strip.background = element_blank(),
+           strip.placement = "outside", strip.text = element_text(size=14)) +
+  scale_fill_manual(values = mycolors[4:5], guide = FALSE) + pub_theme4
+```
+
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
+```{r echo=F, message=F, warning=F}
+#Table for cases and deaths in past 28days 
+
+table1<-past28days %>% select(c("country","confirmed_28d","dead_28d")) 
+
+func <- function(z) if (is.numeric(z)) sum(z, na.rm=T) else '' 
+sumrow <- as.data.frame(lapply(table1, func))
+
+sumrow[1]<-paste0("Total (n= ",nrow(table1),")")
+
+table_results<-rbind(table1,sumrow) %>% rename("New Cases" ="confirmed_28d", "New Deaths"="dead_28d") 
+
+flextable(table_results) %>% bold(i=max(nrow(table_results)), bold = T, part = "body") %>% italic(j= ~ country, italic = T, part = "body") %>% set_caption(paste0("Annex 4: Number of confirmed cases of COVID-19 and deaths in the WHO African Region reported in the past 28 days, ",format(min(past28daysdates$reporting_date), "%d %B %Y")," - ",format(max(past28daysdates$reporting_date), "%d %B %Y"), " n= ", sum(past28days$confirmed_28d,na.rm = T)), style = "Table Caption") %>% set_table_properties(width = 1, layout = "autofit")
+
+```
+
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
+```{r echo=F, message=F, warning=F, fig.cap=paste0("Annex 5: Number of health worker infections in the WHO African Region, ",format(min(df$reporting_date), "%d %B %Y"),"-",format(max(df$reporting_date), "%d %B %Y"), "n=", sum(all$confirmed, na.rm=T)), fig.height = 15, fig.width = 20}
+
+#Table for healthcare worker deaths 
+
+table1<-all %>% select(c("country","hwc_confirmed","hcwrate")) %>% mutate(hcwrate=paste(hcwrate, "%"))
+
+func <- function(z) if (is.numeric(z)) sum(z, na.rm = T) else '' 
+sumrow <- as.data.frame(lapply(table1, func))
+
+sumrow[1]<-paste0("Total (n= ",nrow(table1),")")
+sumrow[3]<-paste(round(mean(all$hcwrate,na.rm = T), digit=2),"%")
+
+table_results<-rbind(table1,sumrow) 
+  
+table_results<- table_results %>% rename("Health Workers" ="hwc_confirmed", "Percent"="hcwrate") 
+
+flextable(table_results) %>% bold(i=max(nrow(table_results)), bold = T, part = "body") %>% italic(j=~country, italic = T, part = "body") %>% set_caption(paste0("Annex 5:Number of health worker infections in the WHO African Region, ",format(min(df$reporting_date), "%d %B %Y")," - ",format(params$dateofreport -days(1), "%d %B %Y"), " n= ", sum(all$hwc_confirmed, na.rm=T)), style = "Table Caption") %>% set_table_properties(width = 1, layout = "autofit")
+  
+
+```
+
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
+```{r echo=F, warning=F, message=T}
+#Table for all 
+summary_bycountry<-Reduce(function(x,y) merge(x = x, y = y, by = "country", all=T), list(all,day7,prevday7, past24h, past28days)) %>% mutate(CFR=paste(CFR), "%") %>%
+  select(c("country","confirmed","confirmed_24h","dead", "dead_24h", "recovered","CFR","datelastreport")) 
+
+func <- function(z) if (is.numeric(z)) sum(z, na.rm=T) else '' 
+sumrow <- as.data.frame(lapply(summary_bycountry, func))
+
+sumrow[1]<-paste0("Total (n= ",nrow(summary_bycountry),")")
+sumrow[7]<-paste(round(mean(all$CFR, na.rm = T), digit=2),"%")
+
+table_results<-rbind(summary_bycountry,sumrow)
+
+table_results<- table_results %>% rename("Total cases"="confirmed","New cases"="confirmed_24h","Total deaths"="dead", "New deaths"="dead_24h", "Total Recovered"="recovered","Case fatality rate"="CFR","Date of last report"="datelastreport") 
+
+
+flextable(table_results) %>% bold(i=max(nrow(table_results)),j=c(2,4,6), bold = T, part = "body") %>% set_table_properties(width = 1, layout = "autofit") %>% set_caption(paste0("Annex 6:Countries in the WHO Africa Region with reported laboratory-confirmed COVID-19 cases and deaths: as of ", format((params$dateofreport - days(1)), "%d %B %Y")))
+
+
+```

@@ -3,7 +3,7 @@ title: "COVID-19 Pandemic in the African Region"
 subtitle: "Epi situation update as of `r format(Sys.Date(), '%d %B %Y')`"
 output: 
   powerpoint_presentation: 
-    reference_doc: "C:/Program Files/R/R-4.0.2/library/covidmonitor/extdata/Afro_Template.pptx"
+    reference_doc: "C:/Program Files/R/R-4.0.2/library/covidmonitor/extdata/Afro_Template.pptx" # change to location on computer
     keep_md: true
 ---
 
