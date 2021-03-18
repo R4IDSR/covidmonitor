@@ -515,7 +515,11 @@ clean_linelist <- function(inputfile,
 
 
 
+  ## output file
+  # define path to output to
+  filename <- paste0(outputdirectory,"/", outputname, Sys.Date(), ".csv")
+
   # write ConfirmedCases file
-  rio::export(confirmedcases, file = paste0("ConfirmedCases_",Sys.Date(),".csv"))
+  rio::export(confirmedcases, file = filename)
 
 }
